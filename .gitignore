@@ -1,0 +1,20 @@
+.venv/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.env
+
+# Material didático da FIAP
+FIAP/
+
+# Notas de trabalho internas (planos, rascunhos) — não são entregáveis.
+CLAUDE.md
+
+# Artefatos de modelo
+models/*.pkl
+models/*.joblib
+*.log
+
+.DS_Store
+.vscode/
+.idea/
