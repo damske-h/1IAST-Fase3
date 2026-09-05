@@ -170,23 +170,30 @@ UF_REGIAO = {
 # TRATAMENTO DE DATA LEAKAGE
 # =============================================================================
 #
-# Todas estas colunas são função aritmética do alvo (taxa_alfabetizacao) e,
-# por isso, NÃO podem entrar na base de modelagem. A lista é explícita para
-# que a decisão fique auditável no repositório — e é aplicada por
-# `gold.montar_base_ml()`, não "lembrada" caso a caso nos notebooks.
+# Todas estas colunas derivam do alvo (taxa_alfabetizacao) ou da mesma medição
+# que o produz, e por isso NÃO podem entrar na base de modelagem. A lista é
+# explícita para que a decisão fique auditável no repositório — e é aplicada
+# por `gold.montar_base_ml()`, não "lembrada" caso a caso nos notebooks.
+#
+# O grau de vazamento foi medido, não presumido (ver notebook 01):
+#   media_portugues                 corr 0,927 com o alvo
+#   meta_alfabetizacao_2025         corr 0,966 (a meta é calculada a partir da taxa de 2023)
+#   soma de proporcao_aluno_nivel_5..8   corr 0,986
+# As proporções por nível NÃO reconstroem a taxa exatamente — o ponto de corte
+# de 743 pontos cai dentro de um nível, não na fronteira entre dois.
 
 COLUNAS_VAZAMENTO = {
     "media_portugues":
         "mesma escala Saeb da qual a taxa é o percentual de alunos com 743+ pontos",
-    "proporcao_aluno_nivel_0": "as proporções por nível somam exatamente para a taxa",
-    "proporcao_aluno_nivel_1": "as proporções por nível somam exatamente para a taxa",
-    "proporcao_aluno_nivel_2": "as proporções por nível somam exatamente para a taxa",
-    "proporcao_aluno_nivel_3": "as proporções por nível somam exatamente para a taxa",
-    "proporcao_aluno_nivel_4": "as proporções por nível somam exatamente para a taxa",
-    "proporcao_aluno_nivel_5": "as proporções por nível somam exatamente para a taxa",
-    "proporcao_aluno_nivel_6": "as proporções por nível somam exatamente para a taxa",
-    "proporcao_aluno_nivel_7": "as proporções por nível somam exatamente para a taxa",
-    "proporcao_aluno_nivel_8": "as proporções por nível somam exatamente para a taxa",
+    "proporcao_aluno_nivel_0": "distribuição de proficiência Saeb da qual a taxa é derivada (níveis 5-8 correlacionam 0,986 com o alvo)",
+    "proporcao_aluno_nivel_1": "distribuição de proficiência Saeb da qual a taxa é derivada (níveis 5-8 correlacionam 0,986 com o alvo)",
+    "proporcao_aluno_nivel_2": "distribuição de proficiência Saeb da qual a taxa é derivada (níveis 5-8 correlacionam 0,986 com o alvo)",
+    "proporcao_aluno_nivel_3": "distribuição de proficiência Saeb da qual a taxa é derivada (níveis 5-8 correlacionam 0,986 com o alvo)",
+    "proporcao_aluno_nivel_4": "distribuição de proficiência Saeb da qual a taxa é derivada (níveis 5-8 correlacionam 0,986 com o alvo)",
+    "proporcao_aluno_nivel_5": "distribuição de proficiência Saeb da qual a taxa é derivada (níveis 5-8 correlacionam 0,986 com o alvo)",
+    "proporcao_aluno_nivel_6": "distribuição de proficiência Saeb da qual a taxa é derivada (níveis 5-8 correlacionam 0,986 com o alvo)",
+    "proporcao_aluno_nivel_7": "distribuição de proficiência Saeb da qual a taxa é derivada (níveis 5-8 correlacionam 0,986 com o alvo)",
+    "proporcao_aluno_nivel_8": "distribuição de proficiência Saeb da qual a taxa é derivada (níveis 5-8 correlacionam 0,986 com o alvo)",
     "nivel_alfabetizacao": "é a própria taxa discretizada em faixas",
     "meta_alfabetizacao_2024": "meta derivada aritmeticamente da taxa observada em 2023",
     "meta_alfabetizacao_2025": "meta derivada aritmeticamente da taxa observada em 2023",
