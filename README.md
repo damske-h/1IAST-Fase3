@@ -198,18 +198,42 @@ Três decisões vieram diretamente da análise exploratória:
 3. **A saída é calibrada** e pode ser lida como taxa esperada — verificado empiricamente.
 4. **O valor do projeto está na explicação, não no ganho marginal de métrica.**
 
-**Por que não os demais algoritmos das aulas:**
+### A comparação medida
 
-| Algoritmo | Motivo do descarte |
-|---|---|
-| Árvore de Decisão | o efeito dominante (UF) é categórico e já é linear em log-odds; perderia a leitura em *odds ratio* e ficaria instável com 24 dummies |
-| SVM | não produz probabilidade calibrada nativamente, e calibração é metade do valor aqui |
-| Naive Bayes | assume independência entre variáveis — insustentável com blocos que somam 100% |
-| Random Forest / XGBoost | desempenho semelhante contra um teto de 0,737, ao custo da interpretabilidade que é o produto do projeto |
+Argumento não é evidência. Todos os candidatos foram avaliados pelo **mesmo** pré-processamento,
+a mesma validação ponderada e a mesma partição — só o estimador muda:
 
-O escopo é deliberadamente enxuto: **um modelo bem justificado e bem interpretado por
-disciplina**, não uma varredura de algoritmos. Para a pergunta de segmentação usamos **K-means**,
-representando a frente de aprendizado não supervisionado.
+| Modelo | ROC-AUC | Brier | Gap treino-validação | Tempo (s) | % do teto |
+|---|---:|---:|---:|---:|---:|
+| Gradient Boosting | 0,6631 | 0,2178 | 0,0140 | 32,2 | 68,8 |
+| **Regressão Logística** | **0,6611** | **0,2182** | **0,0015** | **0,5** | 67,9 |
+| Random Forest | 0,6575 | 0,2194 | 0,0276 | 2,6 | 66,4 |
+| Naive Bayes | 0,6414 | 0,3314 | 0,0009 | 0,4 | 59,6 |
+| Árvore de Decisão | 0,6400 | 0,2217 | 0,0055 | 0,8 | 59,0 |
+| Baseline (taxa média) | 0,5000 | 0,2367 | 0,0000 | 0,3 | 0,0 |
+
+![Comparação de modelos](images/03_comparacao_modelos.png)
+
+**O Gradient Boosting vence por 0,002 — dentro do desvio-padrão (0,003).** É empate estatístico,
+ao custo de 64× mais tempo, gap treino-validação 9× maior e toda a interpretabilidade. O **Naive
+Bayes** confirma o descarte a priori de forma mais grave que o previsto: Brier de 0,331, **pior
+que o baseline**, com probabilidades completamente descalibradas — exatamente o que se espera de
+uma premissa de independência aplicada a três blocos composicionais.
+
+**E o achado que vale mais que a escolha do vencedor:** nenhum algoritmo passa de **68,8% do
+intervalo piso→teto**. Cinco famílias diferentes, do linear ao boosting, param no mesmo lugar —
+**a limitação é a informação disponível, não a capacidade de modelo.** É a justificativa
+quantitativa das evoluções futuras: microdados de aluno e variáveis de política moveriam o
+resultado; um sexto algoritmo, não.
+
+Ficam de fora por **impossibilidade técnica**, não por preferência: o **SVM**, porque o `SVC` não
+produz probabilidade calibrada nativamente e é O(n²) em 21.792 observações; e qualquer estimador
+que não aceite `sample_weight`, já que o alvo depende inteiramente do peso.
+
+**Decisão:** a Regressão Logística fica — não por ser a melhor no AUC, mas porque empata com a
+melhor dentro do desvio, sobreajusta menos, calibra melhor e é a única que responde "por quê".
+Para a pergunta de segmentação usamos **K-means**, representando a frente de aprendizado não
+supervisionado.
 
 ## 6. Métricas de avaliação
 
@@ -409,6 +433,8 @@ próxima rodada de dados precisa registrar o que os estados fazem, não apenas o
 │   └── visualization/                 # estilo visual compartilhado
 ├── images/                            # figuras geradas pelos notebooks
 ├── reports/
+│   ├── relatorio_tecnico.md           # decisões analíticas e metodologia
+│   └── model_card.json                # ficha técnica gerada por código
 ├── requirements.txt
 ├── README.md
 └── .gitignore
@@ -425,7 +451,10 @@ python -m venv .venv
 # 1. Reconstrói o data lake local (Bronze → Silver → Gold)
 .venv/Scripts/python -m src.preprocessing.run_pipeline
 
-# 2. Execute os notebooks 01 a 04, nesta ordem
+# 2. Regenera a ficha técnica do modelo (reports/model_card.json)
+.venv/Scripts/python -m src.modeling.model_card
+
+# 3. Execute os notebooks 01 a 04, nesta ordem
 .venv/Scripts/jupyter lab
 ```
 
@@ -443,6 +472,16 @@ sempre o mesmo estado final. Nenhuma etapa exige credenciais, nuvem ou acesso à
 
 Cada notebook segue o mesmo padrão: célula markdown explicando a **decisão**, código que a
 executa e leitura do **resultado**. Todas as afirmações numéricas saem de células executadas.
+
+## Documentação técnica
+
+| Artefato | Conteúdo |
+|---|---|
+| [`reports/relatorio_tecnico.md`](reports/relatorio_tecnico.md) | decisões analíticas, metodologia, o que foi descartado e por quê, e as decisões revistas durante o projeto |
+| [`reports/model_card.json`](reports/model_card.json) | ficha técnica **gerada por código** (`python -m src.modeling.model_card`): proveniência dos dados, features, hiperparâmetros, métricas, comparação de algoritmos e limitações |
+
+O model card existe para que **nenhum número da documentação seja digitado à mão** — ele é
+regenerado a cada execução, e o relatório técnico o referencia.
 
 ## Tecnologias
 

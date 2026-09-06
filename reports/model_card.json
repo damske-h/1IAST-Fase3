@@ -1,0 +1,232 @@
+{
+  "modelo": "Regressão Logística (L2) sobre alvo binomial ponderado",
+  "gerado_em": "2026-09-06T16:53:26+00:00",
+  "dados": {
+    "origem": "camada Gold local — data/lake/gold/base_ml_alfabetizacao",
+    "linhas": 10896,
+    "municipios": 5500,
+    "unidades_da_federacao": 25,
+    "anos": [
+      2023,
+      2024
+    ],
+    "rede": "municipal (código 3)",
+    "cobertura_declarada": "25 das 27 UFs — o Distrito Federal não tem rede municipal e Roraima está ausente do arquivo do INEP"
+  },
+  "alvo": {
+    "definicao": "dado binário agrupado (binomial ponderado)",
+    "construcao": "cada linha município×ano vira duas observações: y=1 com peso taxa/100 e y=0 com peso 1-taxa/100",
+    "observacoes_apos_expansao": 21792,
+    "soma_dos_pesos": 10896.0,
+    "taxa_media_implicita": 61.54
+  },
+  "features": {
+    "colunas_de_entrada": 28,
+    "features_apos_preprocessamento": 53,
+    "blocos": {
+      "formacao_docente_afd": [
+        "afd_ai_grupo_1",
+        "afd_ai_grupo_2",
+        "afd_ai_grupo_3",
+        "afd_ai_grupo_4"
+      ],
+      "esforco_docente_ied": [
+        "ied_ai_nivel_2",
+        "ied_ai_nivel_3",
+        "ied_ai_nivel_4",
+        "ied_ai_nivel_5",
+        "ied_ai_nivel_6"
+      ],
+      "niveis_inse": [
+        "inse_pc_nivel_2",
+        "inse_pc_nivel_3",
+        "inse_pc_nivel_4",
+        "inse_pc_nivel_5",
+        "inse_pc_nivel_6",
+        "inse_pc_nivel_7",
+        "inse_pc_nivel_8"
+      ],
+      "tamanho_de_turma_atu": [
+        "atu_creche",
+        "atu_pre_escola",
+        "atu_anos_iniciais",
+        "atu_1_ano",
+        "atu_2_ano"
+      ],
+      "socioeconomico_outras": [
+        "media_inse",
+        "qtd_alunos_inse",
+        "proporcao_rural"
+      ],
+      "ideb_defasado_2021": [
+        "ideb_2021",
+        "taxa_aprovacao_2021"
+      ],
+      "categoricas": [
+        "sigla_uf",
+        "capital_desc"
+      ]
+    },
+    "categorias_de_referencia_descartadas": {
+      "afd_ai_grupo_5": "docentes sem curso superior",
+      "ied_ai_nivel_1": "menor nível de esforço docente",
+      "inse_pc_nivel_1": "nível socioeconômico mais baixo"
+    },
+    "excluidas_com_motivo": {
+      "id_municipio": "identificador; entra como grupo do GroupKFold, não como preditor",
+      "taxa_alfabetizacao": "é o alvo",
+      "regiao": "função determinística de sigla_uf — as dummies de UF já a codificam",
+      "ano": "o split temporal treina em 2023 e testa em 2024; um coeficiente de ano estimado só com 2023 não se aplica a 2024. O efeito de ciclo fica fora do escopo: o modelo descreve a estrutura municipal, não a tendência nacional",
+      "nota_portugues_2021": "correlaciona 0,956 com ideb_2021 — redundante",
+      "nota_matematica_2021": "correlaciona 0,961 com ideb_2021 — redundante",
+      "indicador_rendimento_2021": "correlaciona 0,996 com taxa_aprovacao_2021 — redundante",
+      "afd_ai_grupo_5": "categoria de referência do bloco composicional (docentes sem curso superior)",
+      "ied_ai_nivel_1": "categoria de referência do bloco composicional (menor nível de esforço docente)",
+      "inse_pc_nivel_1": "categoria de referência do bloco composicional (nível socioeconômico mais baixo)"
+    }
+  },
+  "tratamento_de_vazamento": {
+    "colunas_mapeadas": 23,
+    "aplicado_em": "src/preprocessing/gold.py — montar_base_ml()",
+    "colunas": [
+      "gap_meta_2025",
+      "ideb_2023",
+      "ideb_2025",
+      "media_portugues",
+      "meta_alfabetizacao_2024",
+      "meta_alfabetizacao_2025",
+      "meta_alfabetizacao_2026",
+      "meta_alfabetizacao_2027",
+      "meta_alfabetizacao_2028",
+      "meta_alfabetizacao_2029",
+      "meta_alfabetizacao_2030",
+      "nivel_alfabetizacao",
+      "proporcao_aluno_nivel_0",
+      "proporcao_aluno_nivel_1",
+      "proporcao_aluno_nivel_2",
+      "proporcao_aluno_nivel_3",
+      "proporcao_aluno_nivel_4",
+      "proporcao_aluno_nivel_5",
+      "proporcao_aluno_nivel_6",
+      "proporcao_aluno_nivel_7",
+      "proporcao_aluno_nivel_8",
+      "ranking_uf",
+      "status_meta_2025"
+    ]
+  },
+  "hiperparametros": {
+    "C": 1.0,
+    "penalidade": "L2 (padrão do LogisticRegression)",
+    "solver": "lbfgs",
+    "max_iter": 2000,
+    "random_state": 42
+  },
+  "validacao": {
+    "principal": "GroupKFold por id_municipio, 5 folds",
+    "generalizacao_temporal": "treino em 2023, teste em 2024",
+    "observacao": "as métricas do split temporal são reportadas com e sem o RS: o estado sofreu queda de 20,2 p.p. em 2024, atribuída a choque exógeno que nenhuma variável da base descreve"
+  },
+  "metricas": {
+    "piso_prever_a_media": {
+      "auc": 0.5,
+      "brier": 0.2367,
+      "log_loss": 0.6663,
+      "ks": 0.0841
+    },
+    "modelo_validacao_cruzada": {
+      "auc": 0.661,
+      "brier": 0.2182,
+      "log_loss": 0.626,
+      "ks": 0.2287
+    },
+    "teto_oraculo": {
+      "auc": 0.7371,
+      "brier": 0.1982,
+      "log_loss": 0.5767,
+      "ks": 0.343
+    },
+    "fracao_do_intervalo_piso_teto_pct": 67.9,
+    "split_temporal": {
+      "todas_as_ufs": {
+        "auc": 0.6421,
+        "brier": 0.2197,
+        "log_loss": 0.6296,
+        "ks": 0.2096
+      },
+      "sem_rio_grande_do_sul": {
+        "auc": 0.6716,
+        "brier": 0.2135,
+        "log_loss": 0.6157,
+        "ks": 0.2466
+      }
+    }
+  },
+  "comparacao_de_algoritmos": [
+    {
+      "modelo": "Gradient Boosting",
+      "auc": 0.6631,
+      "auc_desvio": 0.0032,
+      "brier": 0.2178,
+      "gap_treino_validacao": 0.014,
+      "segundos": 32.0
+    },
+    {
+      "modelo": "Regressão Logística",
+      "auc": 0.6611,
+      "auc_desvio": 0.0032,
+      "brier": 0.2182,
+      "gap_treino_validacao": 0.0015,
+      "segundos": 0.5
+    },
+    {
+      "modelo": "Random Forest",
+      "auc": 0.6575,
+      "auc_desvio": 0.0043,
+      "brier": 0.2194,
+      "gap_treino_validacao": 0.0276,
+      "segundos": 2.5
+    },
+    {
+      "modelo": "Naive Bayes",
+      "auc": 0.6414,
+      "auc_desvio": 0.0051,
+      "brier": 0.3314,
+      "gap_treino_validacao": 0.0009,
+      "segundos": 0.4
+    },
+    {
+      "modelo": "Árvore de Decisão",
+      "auc": 0.64,
+      "auc_desvio": 0.0062,
+      "brier": 0.2217,
+      "gap_treino_validacao": 0.0055,
+      "segundos": 0.8
+    },
+    {
+      "modelo": "Baseline (taxa média)",
+      "auc": 0.5,
+      "auc_desvio": 0.0,
+      "brier": 0.2367,
+      "gap_treino_validacao": 0.0,
+      "segundos": 0.3
+    }
+  ],
+  "limitacoes": [
+    "falácia ecológica — estima o aluno típico do município, não uma criança",
+    "peso por município, não por aluno — a base não traz o número de avaliados",
+    "sem variáveis de política educacional — o maior efeito do modelo (UF) não é explicável",
+    "INSE de 2023 replicado para 2024 como atributo estrutural",
+    "AFD/ATU/IED usam o agregado Total, que inclui a rede privada",
+    "apenas dois ciclos avaliativos — tendência e choque são indistinguíveis",
+    "associações condicionais, não efeitos causais"
+  ],
+  "reprodutibilidade": {
+    "semente": 42,
+    "python": "3.14.4",
+    "scikit_learn": "1.9.0",
+    "comandos": [
+      "python -m src.preprocessing.run_pipeline",
+      "python -m src.modeling.model_card"
+    ]
+  }
+}
