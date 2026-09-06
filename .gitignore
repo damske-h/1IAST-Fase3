@@ -9,6 +9,7 @@ FIAP/
 
 # Notas de trabalho internas (planos, rascunhos) — não são entregáveis.
 CLAUDE.md
+ROTEIRO.md
 
 # Artefatos de modelo
 models/*.pkl
