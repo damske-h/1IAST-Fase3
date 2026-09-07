@@ -98,23 +98,8 @@ def colunas_do_modelo():
     return NUMERICAS_GERAIS + NUMERICAS_IDEB + CATEGORICAS
 
 
-def construir_pipeline(C: float = 1.0, max_iter: int = 2000,
-                       random_state: int = 42) -> Pipeline:
-    """Monta o `Pipeline` completo: pré-processamento + Regressão Logística.
-
-    Três ramos no `ColumnTransformer`:
-
-    * numéricas gerais — imputação pela mediana + padronização;
-    * numéricas do IDEB — imputação pela mediana **com indicador de ausência**,
-      porque não ter IDEB divulgado é sinal, não ruído;
-    * categóricas — imputação pela categoria mais frequente + *dummy encoding*
-      (`drop="first"`), que remove uma categoria para evitar multicolinearidade
-      entre as dummies.
-
-    `handle_unknown="ignore"` cobre o caso real do split temporal: os municípios
-    do Acre só aparecem em 2024, então a UF `AC` é desconhecida para um modelo
-    treinado em 2023.
-    """
+def construir_preprocessamento() -> ColumnTransformer:
+    """Monta apenas o pré-processamento, para reuso entre modelos candidatos."""
     numericas_gerais = Pipeline([
         ("imputacao", SimpleImputer(strategy="median")),
         ("padronizacao", StandardScaler()),
@@ -131,23 +116,86 @@ def construir_pipeline(C: float = 1.0, max_iter: int = 2000,
                                       sparse_output=False)),
     ])
 
-    preprocessamento = ColumnTransformer([
+    return ColumnTransformer([
         ("numericas", numericas_gerais, NUMERICAS_GERAIS),
         ("ideb", numericas_ideb, NUMERICAS_IDEB),
         ("categoricas", categoricas, CATEGORICAS),
     ], remainder="drop", verbose_feature_names_out=False)
 
-    # A penalidade L2 é o padrão do LogisticRegression e é o que queremos:
-    # estabiliza os coeficientes sob a colinearidade residual entre blocos.
-    # (O argumento `penalty` foi depreciado no scikit-learn 1.8; omiti-lo mantém L2.)
-    modelo = LogisticRegression(
-        C=C,
-        solver="lbfgs",
-        max_iter=max_iter,
-        random_state=random_state,
-    )
 
-    return Pipeline([("preprocessamento", preprocessamento), ("modelo", modelo)])
+def construir_pipeline(C: float = 1.0, max_iter: int = 2000,
+                       random_state: int = 42, estimador=None) -> Pipeline:
+    """Monta o `Pipeline` completo: pré-processamento + modelo.
+
+    Sem `estimador`, usa a **Regressão Logística** — o modelo da entrega. O
+    parâmetro existe para que a comparação formal de algoritmos (notebook 03,
+    §10) rode todos os candidatos pelo **mesmo** pré-processamento e pela mesma
+    validação; trocar só o estimador é o que torna a comparação justa.
+
+    Três ramos no `ColumnTransformer`:
+
+    * numéricas gerais — imputação pela mediana + padronização;
+    * numéricas do IDEB — imputação pela mediana **com indicador de ausência**,
+      porque não ter IDEB divulgado é sinal, não ruído;
+    * categóricas — imputação pela categoria mais frequente + *dummy encoding*
+      (`drop="first"`), que remove uma categoria para evitar multicolinearidade
+      entre as dummies.
+
+    `handle_unknown="ignore"` cobre o caso real do split temporal: os municípios
+    do Acre só aparecem em 2024, então a UF `AC` é desconhecida para um modelo
+    treinado em 2023.
+    """
+    if estimador is None:
+        # A penalidade L2 é o padrão do LogisticRegression e é o que queremos:
+        # estabiliza os coeficientes sob a colinearidade residual entre blocos.
+        # (O argumento `penalty` foi depreciado no scikit-learn 1.8; omiti-lo mantém L2.)
+        estimador = LogisticRegression(
+            C=C,
+            solver="lbfgs",
+            max_iter=max_iter,
+            random_state=random_state,
+        )
+
+    return Pipeline([("preprocessamento", construir_preprocessamento()),
+                     ("modelo", estimador)])
+
+
+# =============================================================================
+# CANDIDATOS DA COMPARAÇÃO FORMAL DE ALGORITMOS
+# =============================================================================
+#
+# Todos passam pelo mesmo pré-processamento e pela mesma validação ponderada.
+# Só o estimador muda — é isso que torna a comparação justa.
+#
+# Ficam de fora, por impossibilidade técnica e não por preferência:
+#   * SVM  — o `SVC` não produz probabilidade calibrada nativamente (só via
+#     Platt scaling, que é outro modelo por cima), e nossas métricas centrais
+#     (Brier, calibração) exigem probabilidade. Além disso é O(n²) em 21.792
+#     observações.
+#   * Modelos que não aceitam `sample_weight` — o alvo binomial ponderado
+#     depende inteiramente do peso; sem ele o problema deixa de existir.
+
+def modelos_candidatos(random_state: int = 42) -> dict:
+    """Catálogo dos algoritmos comparados no notebook 03, §10."""
+    from sklearn.dummy import DummyClassifier
+    from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+    from sklearn.naive_bayes import GaussianNB
+    from sklearn.tree import DecisionTreeClassifier
+
+    return {
+        "Baseline (taxa média)": DummyClassifier(strategy="prior"),
+        "Regressão Logística": LogisticRegression(
+            C=1.0, solver="lbfgs", max_iter=2000, random_state=random_state),
+        "Naive Bayes": GaussianNB(),
+        "Árvore de Decisão": DecisionTreeClassifier(
+            max_depth=6, min_samples_leaf=50, random_state=random_state),
+        "Random Forest": RandomForestClassifier(
+            n_estimators=200, max_depth=12, min_samples_leaf=20,
+            n_jobs=-1, random_state=random_state),
+        "Gradient Boosting": GradientBoostingClassifier(
+            n_estimators=150, max_depth=3, learning_rate=0.1,
+            random_state=random_state),
+    }
 
 
 def nomes_das_features(pipeline: Pipeline):
