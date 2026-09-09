@@ -1,78 +1,84 @@
 """
-Definição do alvo — classificação binária no grão do município.
+Construção do alvo e do painel de modelagem.
 
-**A premissa desta abordagem.** A alfabetização de um aluno é tratada como
-*dada pelo contexto do município em que ele estuda*. Em vez de tentar modelar a
-criança — que nenhuma base pública descreve individualmente —, modelamos o
-município, e a leitura para o aluno é direta: *"uma criança deste município
-está num contexto onde menos da metade dos colegas chega alfabetizada"*.
+**Alvo:** `em_risco = taxa_alfabetizacao < 50%` no ciclo de 2024 — o município
+onde **menos da metade das crianças** chega alfabetizada ao fim do 2º ano.
 
-Isso troca uma construção estatística elaborada (dado binário agrupado com
-pesos amostrais) por **uma linha, um município, um rótulo** — o formato que
-todo classificador do Scikit-learn espera, e o que os hands-on da disciplina
-usam do início ao fim.
+A leitura para a pergunta do Tech Challenge é direta: uma criança que estuda num
+município sinalizado em risco tem chance substancialmente menor de ser
+considerada alfabetizada. Como nenhuma fonte pública desce ao aluno, é o
+contexto do município que responde por ela.
 
-**O rótulo.** `em_risco = taxa_alfabetizacao < 50%` — o município onde **menos
-da metade das crianças** chega alfabetizada ao fim do 2º ano.
+**Duas naturezas de informação entram como preditores:**
 
-Três razões para este corte:
+* **histórico** — como a rede vinha indo (taxa e nota de 2023, IDEB de 2021);
+* **atualidade** — como o município é hoje (nível socioeconômico, corpo
+  docente, turmas, ruralidade, porte, UF).
 
-1. **É absoluto.** Não deriva da taxa passada do próprio município (o que seria
-   circular) nem da média dos demais (o que faria metade do país estar sempre
-   "em risco" por construção, melhorasse o país ou não).
-2. **A classe positiva é a minoritária e a acionável** — 27,3% dos municípios.
-   É o caso em que *recall* e `class_weight` fazem diferença, e o erro que
-   custa caro é deixar um município em risco passar despercebido.
-3. **É comunicável.** "Menos da metade das crianças" é uma frase que um gestor
-   entende sem nota de rodapé.
-
-**Recorte temporal.** Apenas o ciclo de **2024**: uma linha por município, sem
-repetição. Não há grupo a proteger na validação cruzada, o que dispensa o
-`GroupKFold` e permite usar `train_test_split` estratificado e
-`StratifiedKFold` diretamente.
+Ambas são anteriores ao resultado previsto, então nenhuma vaza o alvo.
 """
 
+import numpy as np
 import pandas as pd
 
+from ..preprocessing import carregar_base_ml, ler_particionado
+from ..preprocessing.config import LAKE_DIR
+
+ANO_ALVO = 2024
+ANO_HISTORICO = 2023
 LIMIAR_RISCO = 50.0
-ANO_MODELAGEM = 2024
 COLUNA_TAXA = "taxa_alfabetizacao"
 
 
-def rotular_risco(base: pd.DataFrame,
-                  ano: int = ANO_MODELAGEM,
-                  limiar: float = LIMIAR_RISCO):
-    """Recorta o ciclo e devolve `(X, y)`.
+def montar_painel(ano_alvo: int = ANO_ALVO, ano_historico: int = ANO_HISTORICO) -> pd.DataFrame:
+    """Uma linha por município: a atualidade do ciclo alvo + o histórico do anterior.
 
-    `X` é a base do ciclo, uma linha por município. `y` vale 1 quando o
-    município está **em risco** — menos de `limiar`% das crianças alfabetizadas.
+    O histórico vem da Silver, não da base de modelagem: `taxa_alfabetizacao` e
+    `media_portugues` do ciclo **corrente** são vazamento e por isso ficam fora
+    da Gold analítica — **defasadas**, deixam de ser.
     """
-    corte = base[base["ano"] == ano].reset_index(drop=True)
-    if corte.empty:
-        raise ValueError(f"nenhuma linha para o ciclo {ano}")
-    if corte["id_municipio"].duplicated().any():
-        raise ValueError("há municípios repetidos no ciclo — o grão deveria ser único")
+    atual = carregar_base_ml().drop(columns=["_gold_processed_at"])
+    atual = atual[atual["ano"] == ano_alvo]
 
-    y = (corte[COLUNA_TAXA] < limiar).astype(int).to_numpy()
-    return corte, y
+    indicador = ler_particionado(LAKE_DIR / "silver" / "pass" / "indicador_municipio")
+    historico = (
+        indicador[(indicador["rede_desc"] == "municipal")
+                  & (indicador["ano"] == ano_historico)]
+        [["id_municipio", "taxa_alfabetizacao", "media_portugues"]]
+        .rename(columns={"taxa_alfabetizacao": f"taxa_{ano_historico}",
+                         "media_portugues": f"media_portugues_{ano_historico}"})
+    )
+
+    painel = atual.merge(historico, on="id_municipio", how="inner")
+    if painel["id_municipio"].duplicated().any():
+        raise ValueError("o painel deveria ter uma linha por município")
+    return painel.reset_index(drop=True)
 
 
-def resumir_rotulo(X: pd.DataFrame, y, limiar: float = LIMIAR_RISCO) -> pd.DataFrame:
-    """Sumário de conferência do rótulo, para exibir no notebook."""
-    em_risco = X.loc[y == 1, COLUNA_TAXA]
-    fora = X.loc[y == 0, COLUNA_TAXA]
+def rotular_risco(painel: pd.DataFrame, limiar: float = LIMIAR_RISCO):
+    """Aplica o corte e devolve `(X, y)`.
 
+    O corte em 50% é **absoluto e interpretável sem contexto estatístico** — um
+    gestor entende na hora. Duas alternativas foram descartadas:
+
+    * a **meta pactuada**, calculada a partir da taxa de 2023 do próprio
+      município: usá-la tornaria o alvo função da própria história e a meta,
+      um preditor circular;
+    * a **média nacional do ano**, que é relativa — metade do país estaria em
+      risco por construção, melhorasse ou piorasse.
+    """
+    y = (painel[COLUNA_TAXA] < limiar).astype(int).to_numpy()
+    return painel, y
+
+
+def resumir_rotulo(painel: pd.DataFrame, y: np.ndarray,
+                   limiar: float = LIMIAR_RISCO) -> pd.DataFrame:
+    """Conferência do balanceamento — a classe de risco é a minoritária."""
     return pd.DataFrame([
-        {"classe": f"em risco (taxa < {limiar:.0f}%)",
-         "municípios": int(y.sum()),
-         "% do total": round(float(y.mean()) * 100, 1),
-         "taxa média": round(float(em_risco.mean()), 1),
-         "taxa mínima": round(float(em_risco.min()), 1),
-         "taxa máxima": round(float(em_risco.max()), 1)},
-        {"classe": f"fora de risco (taxa >= {limiar:.0f}%)",
-         "municípios": int((y == 0).sum()),
-         "% do total": round(float((y == 0).mean()) * 100, 1),
-         "taxa média": round(float(fora.mean()), 1),
-         "taxa mínima": round(float(fora.min()), 1),
-         "taxa máxima": round(float(fora.max()), 1)},
+        {"medida": "municípios", "valor": len(painel)},
+        {"medida": f"em risco (taxa < {limiar:.0f}%)", "valor": int(y.sum())},
+        {"medida": "fora de risco", "valor": int((y == 0).sum())},
+        {"medida": "prevalência do risco (%)", "valor": round(float(y.mean() * 100), 2)},
+        {"medida": "acurácia do baseline (%)",
+         "valor": round(float(max(y.mean(), 1 - y.mean()) * 100), 2)},
     ])
