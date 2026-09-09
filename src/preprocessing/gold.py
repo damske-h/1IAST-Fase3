@@ -60,8 +60,15 @@ def _visao_alfabetizacao_municipio(df_mun, df_meta_mun) -> pd.DataFrame:
              "media_portugues", "meta_2025", "meta_2030",
              "nivel_alfabetizacao"]].rename(columns={"rede_desc": "rede"})
     df["gap_meta_2025"] = (df["taxa_alfabetizacao"] - df["meta_2025"]).round(2)
+
+    # Município sem meta publicada tem status **indefinido**, não "NAO_ATINGIU".
+    # A comparação `taxa >= NaN` devolve False, e um `np.where` ingênuo rotularia
+    # como não atingiu quem sequer tem meta pactuada — 96 municípios em 2024.
+    # A Fase 2 tinha o mesmo comportamento (o `otherwise` do Spark faz o mesmo);
+    # aqui a ausência é preservada, para não inventar rótulo onde não há régua.
     df["status_meta_2025"] = np.where(
-        df["taxa_alfabetizacao"] >= df["meta_2025"], "ATINGIU", "NAO_ATINGIU")
+        df["meta_2025"].isna(), None,
+        np.where(df["taxa_alfabetizacao"] >= df["meta_2025"], "ATINGIU", "NAO_ATINGIU"))
     return df
 
 
