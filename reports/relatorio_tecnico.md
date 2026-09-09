@@ -171,7 +171,7 @@ usaria informação da validação — e não geraria erro nenhum.
 
 ## 5. Seleção de variáveis e pré-processamento
 
-`src/modeling/features.py`. **28 colunas de entrada → 53 features após o pré-processamento.**
+`src/modeling/features.py`. **30 colunas de entrada → 54 features após o pré-processamento.**
 
 | Bloco | Variáveis | Referência descartada |
 |---|---:|---|
@@ -205,6 +205,13 @@ e ajustar hiperparâmetros, sempre com `return_train_score=True`.
 
 Estratificado nas duas etapas porque a classe de risco é minoritária: um sorteio simples poderia
 produzir partições com prevalências diferentes e as métricas ficariam instáveis por acidente.
+
+> **Nota — experimento de generalização temporal.** A Etapa 17 do `notebooks/03` treina em 2023 e
+> testa em 2024 como diagnóstico complementar. Os modelos perdem de 0,027 a 0,057 de PR-AUC, e o
+> exercício quantifica o choque do Rio Grande do Sul (ROC-AUC 0,902 fora do estado contra 0,642
+> dentro dele). **Não é a validação do projeto:** treinar em 2023 custa `taxa_2023` e a nota de
+> 2023, os dois preditores mais fortes, e com apenas dois ciclos — um deles atingido por choque
+> exógeno — o resultado não sustenta seleção de modelo.
 
 | Métrica | Por que está aqui |
 |---|---|
@@ -430,6 +437,8 @@ Cada uma foi corrigida por uma verificação, não por opinião.
 | "`media_portugues` deve ser excluída em qualquer forma" | Só a **contemporânea**. Defasada, virou a variável contínua mais importante do modelo — a distinção reorganizou o projeto |
 | "A primeira divisão da árvore é a taxa de 2023" | É a **nota de Português de 2023**; e o segundo nível já usa dummies de UF |
 | "`GridSearchCV` não funciona com alvo ponderado" | **Funciona** — bastava declarar `set_fit_request` em cada etapa aninhada. O obstáculo era falta de configuração, não limitação da biblioteca |
+| "`status_meta_2025` classifica todo município" | **Não deveria.** O `np.where` sem ramo para meta ausente rotulava como `NAO_ATINGIU` os **96 municípios de 2024 sem meta publicada**. Corrigido em `gold.py`: sem meta, o status é **indefinido** |
+| "O split temporal é estruturalmente impossível para nós" | **É possível**, usando o IDEB de 2021 como histórico comum aos dois ciclos. Impossível é manter `taxa_2023` e a nota de 2023, que só existem nas linhas de 2024 |
 
 ### 13.1 As formulações que ficaram pelo caminho
 

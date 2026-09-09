@@ -3,30 +3,43 @@
 > **POSTECH AI Scientist — Fase 3.** Continuidade da pipeline de dados da Fase 2, agora aplicada
 > a Machine Learning supervisionado.
 
-Modelo supervisionado que prevê se **um município está em risco educacional** — isto é, se menos
-da metade das suas crianças chega alfabetizada ao fim do 2º ano — a partir do **histórico** e da
-**atualidade** daquele território.
+Modelo supervisionado que prevê se **um município está em risco educacional** — menos da metade
+das crianças alfabetizadas ao fim do 2º ano — a partir do **histórico** e da **atualidade** do
+território.
 
-**O achado central:** depois de controlar o desempenho pregresso da rede, o nível socioeconômico,
-a formação docente, o tamanho das turmas, a ruralidade e o porte, **a unidade federativa continua
-sendo o maior efeito do modelo**. Embaralhá-la derruba o PR-AUC em 0,211 — quase três vezes a
-segunda colocada. Ceará (*odds ratio* de risco **0,19**) e Bahia (**6,96**) são vizinhos, da mesma
-região e com condições socioeconômicas próximas, e aparecem em polos opostos. O que separa os
-municípios brasileiros não é principalmente a renda das famílias: é a política pública que cada
-estado executa.
+> **O achado central.** O que separa os municípios brasileiros não é a renda das famílias: é a política pública de cada estado.
 
 ---
 
 ## 1. Contexto do problema
 
-O **Compromisso Nacional Criança Alfabetizada** pactua metas por município para que toda criança
-esteja alfabetizada ao fim do **2º ano do ensino fundamental**. A régua é o **Indicador Criança
-Alfabetizada (ICA)**: o percentual de estudantes que atingem **743 pontos na escala Saeb de
-Língua Portuguesa**.
+A alfabetização na idade certa é o indicador que condiciona toda a trajetória escolar seguinte:
+uma criança que sai do 2º ano sem ler acumula defasagem em todas as disciplinas. O **Compromisso
+Nacional Criança Alfabetizada (CNCA)** organiza a política federal em torno dele e pactua metas
+anuais até **2030**, aferidas pelo **Saeb/INEP** ao fim do 2º ano do ensino fundamental. A régua é
+o **Indicador Criança Alfabetizada (ICA)**: o percentual de estudantes que atingem **743 pontos na
+escala Saeb de Língua Portuguesa**.
 
-O indicador diz **onde estamos** — 62,8% na média da rede municipal em 2024. Não diz **por quê**,
-nem **onde intervir primeiro**. E a média não descreve ninguém: há municípios com 4% e municípios
-com 100%.
+**As metas são progressivas e individualizadas.** No plano nacional, a rede pública sai de 59,9%
+em 2024 rumo a **80% em 2030**. No plano municipal, cada município recebe a própria trajetória a
+partir de onde está: para 2025, as metas dos 5.352 municípios com pacto publicado vão de **14,05%
+a 80,0%** (mediana 66,9%). Não existe um patamar único a cobrar — existem 5.352 trajetórias.
+
+**E o resultado chega tarde.** O ciclo é anual, e o município só descobre que ficou para trás
+quando a avaliação daquele ano é divulgada — com a turma já no 3º ano. Realocar FUNDEB, priorizar
+formação continuada de professores, acionar busca ativa ou material estruturado são decisões que
+precisam ser tomadas **antes** do próximo ciclo, não depois dele. É isso que o projeto ataca:
+**antecipar o risco usando apenas informação já disponível no momento da decisão.**
+
+O indicador oficial diz **onde estamos** — 62,8% na média da rede municipal em 2024. Não diz **por
+quê**, nem **onde intervir primeiro**. E a média não descreve ninguém: há municípios com 4% e
+municípios com 100%, e em **1.464 deles menos da metade das crianças chega alfabetizada**.
+
+> **Continuidade da Fase 2.** A pipeline de engenharia de dados que integra o ICA às metas
+> nacionais, estaduais e municipais foi construída na fase anterior. Aqui, a camada Gold vira
+> insumo de Machine Learning — o que o enunciado descreve como transformar dado público em
+> inteligência analítica aplicada. A pipeline foi reconstruída localmente em Python (seção 3),
+> sem AWS, para que o projeto rode de ponta a ponta sem depender de credenciais.
 
 ## 2. Objetivo analítico
 
@@ -53,19 +66,16 @@ estudante.
 | IDEB Anos Iniciais | município × rede × ciclo | não |
 
 Modelamos então **o contexto que responde por essa criança**: o município entra como *em risco*
-quando `taxa_alfabetizacao < 50%`. A leitura para a pergunta original é direta — *uma criança que
-estuda num município sinalizado em risco tem chance substancialmente menor de ser considerada
-alfabetizada*.
-
-O município entra com **duas naturezas de informação**:
+quando `taxa_alfabetizacao < 50%`, com **duas naturezas de informação**.
 
 | Natureza | Variáveis | Por que é legítima |
 |---|---|---|
 | **Histórico** | taxa e nota de Português de **2023**, IDEB e aprovação de **2021** | anteriores ao ciclo previsto — já publicadas quando 2024 começou |
 | **Atualidade** | nível socioeconômico, formação docente, esforço docente, tamanho de turma, ruralidade, porte, UF | descrevem o município, não o resultado da prova |
 
-A contrapartida é a **falácia ecológica**: duas crianças do mesmo município recebem a mesma
-predição (seção 9).
+A leitura para a pergunta original é direta: *uma criança que estuda num município sinalizado em
+risco tem chance substancialmente menor de ser alfabetizada*. A contrapartida é a **falácia
+ecológica** — duas crianças do mesmo município recebem a mesma predição (seção 9).
 
 ## 3. Descrição da base
 
@@ -142,7 +152,14 @@ o fold de treino:
 `train_test_split` **estratificado** 75/25 — 4.047 municípios de treino e **1.349 de teste, que só
 são tocados na avaliação final**. Sobre o treino, `StratifiedKFold` de 5 folds para comparar
 algoritmos e ajustar hiperparâmetros, sempre com `return_train_score=True` para diagnosticar
-overfitting.
+overfitting. É o desenho que as aulas de classificação supervisionada usam, e é a validação
+**principal** deste projeto.
+
+> **Experimento complementar.** O notebook 03 traz ainda uma checagem de generalização temporal
+> (treinar em 2023, testar em 2024), útil como diagnóstico: os modelos perdem pouco — 0,027 a
+> 0,057 de PR-AUC — e o exercício põe preço no choque do Rio Grande do Sul, com ROC-AUC de 0,902
+> fora do estado contra 0,642 dentro dele. Não é critério de seleção: com só dois ciclos, um deles
+> atingido por um choque exógeno, o resultado informa, mas não decide.
 
 ## 5. Escolha do algoritmo
 
@@ -167,13 +184,9 @@ A Regressão Logística **lidera o ROC-AUC**, fica a 0,004 do melhor PR-AUC — 
 folds — e **sobreajusta sete vezes menos** que os ensembles. Entrega ainda probabilidade calibrada
 e coeficientes que respondem *por quê*.
 
-Dois resultados que valem mais que o pódio:
-
-- **O Naive Bayes tem recall de 0,93 e precisão de 0,45**: dispara alarme para quase todo mundo. É
-  o efeito esperado da premissa de independência aplicada aos três blocos composicionais (AFD, IED
-  e níveis do INSE, que somam 100% cada).
-- **O baseline acerta 72,9% sem prever ninguém em risco** — a prova de que acurácia sozinha não
-  serve como critério.
+Um resultado vale mais que o pódio: **o Naive Bayes tem recall de 0,93 e precisão de 0,45** —
+dispara alarme para quase todo mundo. É o efeito esperado da premissa de independência aplicada aos
+três blocos composicionais (AFD, IED e níveis do INSE, que somam 100% cada).
 
 ### Otimização de hiperparâmetros
 
@@ -183,7 +196,7 @@ Dois resultados que valem mais que o pódio:
 
 `C = 1,0` vence com PR-AUC **0,809** e gap de **0,020** — muito abaixo do limiar de alerta de
 0,05. A curva mostra treino e validação caminhando coladas: **não havia overfitting para
-resolver.** Com 4.047 municípios de treino para 53 features num modelo linear, a penalidade L2 é
+resolver.** Com 4.047 municípios de treino para 54 features num modelo linear, a penalidade L2 é
 salvaguarda contra colinearidade residual, não remédio para sobreajuste.
 
 ## 6. Métricas de avaliação
@@ -243,27 +256,26 @@ turma são as alavancas. **Um modelo só com histórico prevê e não explica.**
 
 ![Calibração](images/03_calibracao.png)
 
-Desvio médio de **0,032**, com leve subestimação do risco na faixa intermediária. É calibração
-suficiente para ler a saída como probabilidade — e é isso que permite compará-la com a meta
-pactuada (seção 10).
+Desvio médio de **0,032**, com leve subestimação do risco na faixa intermediária — suficiente para
+ler a saída como probabilidade, que é o que permite compará-la com a meta pactuada (seção 10).
 
-### O que o modelo aprendeu
+### O que o modelo aprendeu, e quanto vale cada fator
 
 ![Coeficientes](images/03_coeficientes.png)
 ![Permutation importance](images/03_permutation.png)
 
-As três lentes convergem. Na *permutation importance*, embaralhar `sigla_uf` derruba o PR-AUC em
-**0,211** — quase três vezes a segunda colocada (`media_portugues_2023`, 0,078) e sete vezes o
-nível socioeconômico (0,031). Nos coeficientes, as dummies de UF ocupam as primeiras posições.
+As três lentes convergem. Embaralhar `sigla_uf` derruba o PR-AUC em **0,211** — quase três vezes a
+segunda colocada (`media_portugues_2023`, 0,078) e sete vezes o nível socioeconômico (0,031); nos
+coeficientes, as dummies de UF ocupam as primeiras posições. O Rio Grande do Sul aparece no polo
+de maior risco (*odds ratio* 14,98) por um motivo conhecido: as enchentes de 2024, um choque
+conjuntural que o modelo lê como estrutura.
 
-O Rio Grande do Sul aparece no polo de maior risco (*odds ratio* 14,98) por um motivo conhecido:
-as enchentes de 2024, um choque conjuntural que o modelo lê como estrutura.
-
-### Em pontos percentuais, para decisão
+Traduzidos para a unidade de uma reunião — pontos percentuais de risco por desvio-padrão de
+melhora:
 
 ![Efeitos marginais](images/04_efeitos_marginais.png)
 
-| Fator | Efeito no risco (+1 desvio-padrão) | Natureza |
+| Fator | Efeito no risco | Natureza |
 |---|---:|---|
 | Nota de Português de 2023 | **−6,1 p.p.** | condição herdada |
 | IDEB 2021 | **−5,5 p.p.** | condição herdada |
@@ -271,30 +283,30 @@ as enchentes de 2024, um choque conjuntural que o modelo lê como estrutura.
 | Taxa de 2023 | −4,4 p.p. | condição herdada |
 | Formação docente adequada | **−2,4 p.p.** | alavanca escolar |
 
+As quatro primeiras são herança; a última é o que a gestão municipal controla.
+
 ## 8. Insights encontrados
 
 **1. A política estadual supera a condição socioeconômica.** Ceará e Pernambuco têm INSE idêntico
-(4,37) e taxas de **90,1% contra 63,0%** — 27 pontos que a renda não explica.
-
-**2. O efeito socioeconômico é, em boa parte, geográfico.** No agregado o INSE correlaciona 0,29
-com o alvo; dentro das regiões: Norte 0,31 | Centro-Oeste 0,20 | Sul 0,04 | Sudeste 0,01 |
-**Nordeste −0,14**. É um paradoxo de Simpson — o decil nacional de INSE é quase um rótulo de
-região.
+(4,37) e taxas de **90,1% contra 63,0%** — 27 pontos que a renda não explica. E o padrão se repete
+na escala nacional: no agregado o INSE correlaciona 0,29 com o alvo, mas dentro de cada região cai
+para Norte 0,31 | Centro-Oeste 0,20 | Sul 0,04 | Sudeste 0,01 | **Nordeste −0,14**. É um paradoxo
+de Simpson — o decil nacional de INSE é quase um rótulo de região.
 
 ![Confundimento regional](images/02_confundimento_regional.png)
 
-**3. O Rio Grande do Sul sofreu uma quebra estrutural em 2024** (−20,2 p.p., com 89,6% dos
+**2. O Rio Grande do Sul sofreu uma quebra estrutural em 2024** (−20,2 p.p., com 89,6% dos
 municípios em queda). Como o ciclo modelado é 2024, **o risco previsto para o estado é pessimista
 demais** — limitação declarada.
 
-**4. A árvore de decisão redescobre sozinha os dois achados.**
+**3. A árvore de decisão redescobre sozinha os dois achados.**
 
 ![Árvore de decisão](images/03_arvore.png)
 
 A primeira divisão é a nota de Português de 2023; o segundo nível já usa dummies de UF. O
 território aparece logo depois do histórico, antes de qualquer variável socioeconômica.
 
-**5. Norte e Nordeste formam um par; as outras três regiões, não.**
+**4. Norte e Nordeste formam um par; as outras três regiões, não.**
 
 ![Regiões](images/04_regioes.png)
 
@@ -348,13 +360,9 @@ o risco previsto depois da predição, ela separa dois grupos opostos:
 | Abaixo da meta, **sem** sinal de risco | **1.692 (31,9%)** | falta execução | **apoio técnico**, retorno rápido |
 | Abaixo da meta **com** sinal de risco | **1.296 (24,4%)** | faltam condições | **investimento estruturante**, retorno em anos |
 
-Cobrar resultado do terceiro grupo sem mudar as condições é cobrar o impossível.
-
-### Focalizar por perfil, não por território
-
-Os padrões atravessam as fronteiras regionais: há municípios de perfil nordestino no interior do
-Sudeste e o contrário. Um programa desenhado por região erraria o alvo — e o ranking de risco já
-entrega a lista município a município.
+Cobrar resultado do terceiro grupo sem mudar as condições é cobrar o impossível. E como os padrões
+atravessam as fronteiras regionais (seção 8), a focalização eficiente é **por perfil de risco, não
+por território** — o ranking já entrega a lista município a município.
 
 ### A recomendação de maior retorno
 
@@ -382,7 +390,7 @@ precisa registrar o que os estados fazem, não apenas o que eles têm.**
 ├── notebooks/
 │   ├── 01_pipeline_medalhao.ipynb     # Bronze → Silver → Gold, DQ e idempotência
 │   ├── 02_analise_exploratoria.ipynb  # EDA em 9 etapas, correlações e hipóteses
-│   ├── 03_modelagem.ipynb             # 17 etapas: 6 modelos, GridSearchCV, SHAP
+│   ├── 03_modelagem.ipynb             # 18 etapas: 6 modelos, GridSearchCV, SHAP
 │   └── 04_aplicacao_estrategica.ipynb # as cinco perguntas de negócio
 ├── src/
 │   ├── preprocessing/                 # pipeline medalhão local
@@ -414,13 +422,10 @@ A pipeline é **idempotente** e nenhuma etapa exige credenciais, nuvem ou intern
 
 | Notebook | Frente avaliada | Entrega |
 |---|---|---|
-| [01](notebooks/01_pipeline_medalhao.ipynb) | Engenharia de dados | 7 etapas: medalhão, DQ, quarentena, leakage e idempotência |
+| [01](notebooks/01_pipeline_medalhao.ipynb) | Engenharia de dados | 8 etapas: medalhão, DQ, quarentena, leakage e idempotência |
 | [02](notebooks/02_analise_exploratoria.ipynb) | Análise exploratória | 9 etapas: da inspeção da base às hipóteses e decisões |
-| [03](notebooks/03_modelagem.ipynb) | Modelagem supervisionada | 17 etapas: 6 modelos, `GridSearchCV`, validation curve, ROC, SHAP |
+| [03](notebooks/03_modelagem.ipynb) | Modelagem supervisionada | 18 etapas: 6 modelos, `GridSearchCV`, validation curve, ROC, SHAP |
 | [04](notebooks/04_aplicacao_estrategica.ipynb) | Aplicação estratégica | 6 etapas: as cinco perguntas respondidas pelo mesmo modelo |
-
-Cada notebook segue o padrão das aulas: título de etapa numerado, célula de código com o
-cabeçalho da etapa, e a leitura do resultado logo abaixo.
 
 ## Documentação técnica
 
@@ -429,12 +434,3 @@ cabeçalho da etapa, e a leitura do resultado logo abaixo.
 | [`reports/relatorio_tecnico.md`](reports/relatorio_tecnico.md) | decisões, metodologia, o que foi descartado e as decisões revistas |
 | [`reports/model_card.json`](reports/model_card.json) | ficha técnica **gerada por código** — proveniência, features, hiperparâmetros, métricas, limitações |
 | [`reports/ranking_risco_municipios.csv`](reports/ranking_risco_municipios.csv) | a saída operacional: risco previsto dos 5.396 municípios |
-
-O model card existe para que **nenhum número da documentação seja digitado à mão**.
-
-## Tecnologias
-
-**pandas + PyArrow** (pipeline medalhão em Parquet particionado) · **Scikit-learn** (`Pipeline`,
-`ColumnTransformer`, `GridSearchCV`, os seis classificadores) · **SHAP** (interpretabilidade) ·
-**Matplotlib + seaborn** (visualizações) · **openpyxl** (planilhas do INEP com cabeçalho
-multi-nível).
