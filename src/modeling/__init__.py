@@ -1,15 +1,20 @@
 """Modelagem supervisionada: construção do alvo e pipeline do modelo."""
 
-from .alvo import expandir_binomial, resumir_expansao
+from .alvo import (
+    ANO_ALVO, ANO_HISTORICO, LIMIAR_RISCO, montar_painel, resumir_rotulo, rotular_risco,
+)
 from .features import (
-    CATEGORICAS, EXCLUIDAS, NUMERICAS_GERAIS, NUMERICAS_IDEB, REFERENCIAS,
+    AFD, ATU, ATUALIDADE, CATEGORICAS, EXCLUIDAS, HISTORICO, IED,
+    INSE_NIVEIS, INSE_OUTRAS, REFERENCIAS,
     colunas_do_modelo, construir_pipeline, construir_preprocessamento,
     modelos_candidatos, nomes_das_features,
 )
 
 __all__ = [
-    "expandir_binomial", "resumir_expansao",
+    "montar_painel", "rotular_risco", "resumir_rotulo",
+    "ANO_ALVO", "ANO_HISTORICO", "LIMIAR_RISCO",
     "construir_pipeline", "construir_preprocessamento", "colunas_do_modelo",
     "nomes_das_features", "modelos_candidatos",
-    "NUMERICAS_GERAIS", "NUMERICAS_IDEB", "CATEGORICAS", "EXCLUIDAS", "REFERENCIAS",
+    "HISTORICO", "ATUALIDADE", "CATEGORICAS", "EXCLUIDAS", "REFERENCIAS",
+    "AFD", "IED", "ATU", "INSE_NIVEIS", "INSE_OUTRAS",
 ]

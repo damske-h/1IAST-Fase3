@@ -1,15 +1,15 @@
 """
 Seleção de variáveis e pipeline de pré-processamento integrada ao modelo.
 
-Este módulo materializa as decisões tomadas na análise exploratória
-(`notebooks/02_analise_exploratoria.ipynb`). Elas ficam aqui, em código, e não
-espalhadas pelo notebook, para que a escolha de cada variável seja auditável e
-reproduzível.
+As decisões vêm da EDA (`notebooks/02`) e moram aqui, em código, para ficarem
+auditáveis. O pré-processamento é montado **dentro** do `Pipeline`, então
+imputação, padronização e codificação são ajustadas só no fold de treino.
 
-O pré-processamento é montado **dentro** de um `Pipeline` do Scikit-learn,
-como o enunciado exige. A consequência prática é que imputação, padronização e
-codificação são ajustadas **apenas no fold de treino** de cada validação — a
-média usada para padronizar nunca vê o conjunto de validação.
+As variáveis se organizam em duas naturezas, e a distinção é o eixo do projeto:
+
+* **HISTÓRICO** — como a rede vinha indo. Defasado, logo legítimo.
+* **ATUALIDADE** — como o município é hoje: contexto socioeconômico, corpo
+  docente, turmas, ruralidade, porte e UF.
 """
 
 from sklearn.compose import ColumnTransformer
@@ -18,17 +18,15 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-# =============================================================================
-# BLOCOS COMPOSICIONAIS — categoria de referência descartada
-# =============================================================================
-#
-# AFD, IED e os níveis do INSE são percentuais que somam 100% por construção
-# (verificado na seção 5 da EDA). Manter todas as categorias cria colinearidade
-# perfeita: a última é `100 - (soma das demais)`, informação zero. Descartamos
-# uma categoria de referência por bloco, escolhida pela interpretação — os
-# coeficientes passam a ser lidos como "efeito de deslocar um ponto percentual
-# da categoria de referência para esta".
+# ── Histórico do próprio município ───────────────────────────────────────────
+# Anteriores ao ciclo previsto: em 2024 já estavam publicados. Vazamento é
+# contemporâneo, não histórico.
+HISTORICO = ["taxa_2023", "media_portugues_2023", "ideb_2021", "taxa_aprovacao_2021"]
 
+# ── Blocos composicionais: uma categoria de referência descartada ────────────
+# AFD, IED e os níveis do INSE somam 100% por construção. A última categoria é
+# `100 - (soma das demais)` — colinearidade perfeita. Cada coeficiente passa a
+# ser lido como "efeito de deslocar um ponto percentual da referência para esta".
 REFERENCIAS = {
     "afd_ai_grupo_5": "docentes sem curso superior",
     "ied_ai_nivel_1": "menor nível de esforço docente",
@@ -38,77 +36,52 @@ REFERENCIAS = {
 AFD = [f"afd_ai_grupo_{i}" for i in (1, 2, 3, 4)]
 IED = [f"ied_ai_nivel_{i}" for i in (2, 3, 4, 5, 6)]
 INSE_NIVEIS = [f"inse_pc_nivel_{i}" for i in range(2, 9)]
-
-# Médias de alunos por turma: não são composicionais, entram todas.
 ATU = ["atu_creche", "atu_pre_escola", "atu_anos_iniciais", "atu_1_ano", "atu_2_ano"]
-
 INSE_OUTRAS = ["media_inse", "qtd_alunos_inse", "proporcao_rural"]
 
-# =============================================================================
-# BLOCO IDEB — ausência informativa
-# =============================================================================
-#
-# Do bloco original de cinco variáveis restam duas: `ideb_2021` (índice
-# composto, o mais interpretável para um gestor) e `taxa_aprovacao_2021` (a
-# dimensão de fluxo escolar, distinta da proficiência). As notas de Português e
-# Matemática correlacionam 0,95+ com o IDEB, e `indicador_rendimento_2021`
-# correlaciona 0,996 com a taxa de aprovação — redundância pura.
-#
-# Estas duas têm 13,3% e 5,0% de ausência, concentrada em municípios pequenos e
-# isolados: a ausência **é informativa**, e por isso a imputação vem com
-# `add_indicator=True`.
+ATUALIDADE = AFD + IED + INSE_NIVEIS + ATU + INSE_OUTRAS
 
-IDEB = ["ideb_2021", "taxa_aprovacao_2021"]
-
-NUMERICAS_GERAIS = AFD + IED + INSE_NIVEIS + ATU + INSE_OUTRAS
-NUMERICAS_IDEB = IDEB
-
-# =============================================================================
-# CATEGÓRICAS
-# =============================================================================
-#
-# `sigla_uf` é o controle geográfico obrigatório (ver o paradoxo de Simpson na
-# seção 4 da EDA). `regiao` **não entra**: é função determinística da UF, de
-# modo que as dummies de UF já a contêm — incluí-la só somaria colinearidade.
-# Ela permanece na base para agregação e relatório.
-
+# `sigla_uf` é o controle geográfico obrigatório (paradoxo de Simpson, EDA §4).
+# `regiao` fica fora: é função determinística da UF, já contida nas dummies.
 CATEGORICAS = ["sigla_uf", "capital_desc"]
 
-# =============================================================================
-# EXCLUÍDAS — com o motivo, para a decisão ficar auditável
-# =============================================================================
+# Ausência informativa: IDEB e taxa de aprovação faltam em 13,3% e 5,0% dos
+# municípios, concentrados nos pequenos e isolados — daí `add_indicator=True`.
+COM_INDICADOR = ["ideb_2021", "taxa_aprovacao_2021"]
 
 EXCLUIDAS = {
-    "id_municipio": "identificador; entra como grupo do GroupKFold, não como preditor",
-    "taxa_alfabetizacao": "é o alvo",
-    "regiao": "função determinística de sigla_uf — as dummies de UF já a codificam",
-    "ano": ("o split temporal treina em 2023 e testa em 2024; um coeficiente de ano "
-            "estimado só com 2023 não se aplica a 2024. O efeito de ciclo fica fora "
-            "do escopo: o modelo descreve a estrutura municipal, não a tendência nacional"),
+    "id_municipio": "identificador; serve para separar municípios na validação",
+    "taxa_alfabetizacao": "é o alvo (do ciclo de 2024)",
+    "regiao": "função determinística de sigla_uf — as dummies já a codificam",
+    "ano": "constante: a modelagem usa um único ciclo",
     "nota_portugues_2021": "correlaciona 0,956 com ideb_2021 — redundante",
     "nota_matematica_2021": "correlaciona 0,961 com ideb_2021 — redundante",
     "indicador_rendimento_2021": "correlaciona 0,996 com taxa_aprovacao_2021 — redundante",
-    **{coluna: f"categoria de referência do bloco composicional ({desc})"
-       for coluna, desc in REFERENCIAS.items()},
+    **{c: f"categoria de referência do bloco composicional ({d})"
+       for c, d in REFERENCIAS.items()},
 }
 
 
-def colunas_do_modelo():
-    """Lista, na ordem, as colunas que alimentam a pipeline."""
-    return NUMERICAS_GERAIS + NUMERICAS_IDEB + CATEGORICAS
+def colunas_do_modelo(numericas=None):
+    """Colunas que alimentam a pipeline, na ordem."""
+    return (HISTORICO + ATUALIDADE if numericas is None else list(numericas)) + CATEGORICAS
 
 
-def construir_preprocessamento() -> ColumnTransformer:
-    """Monta apenas o pré-processamento, para reuso entre modelos candidatos."""
-    numericas_gerais = Pipeline([
-        ("imputacao", SimpleImputer(strategy="median")),
-        ("padronizacao", StandardScaler()),
-    ])
+def construir_preprocessamento(numericas=None) -> ColumnTransformer:
+    """Pré-processamento isolado, para reuso entre modelos candidatos.
 
-    numericas_ideb = Pipeline([
-        ("imputacao", SimpleImputer(strategy="median", add_indicator=True)),
-        ("padronizacao", StandardScaler()),
-    ])
+    `numericas` permite treinar sobre um subconjunto — é assim que o notebook
+    compara "só histórico" contra "só atualidade" pela mesma pipeline.
+    """
+    numericas = HISTORICO + ATUALIDADE if numericas is None else list(numericas)
+    simples = [c for c in numericas if c not in COM_INDICADOR]
+    com_indicador = [c for c in numericas if c in COM_INDICADOR]
+
+    def ramo(indicador):
+        return Pipeline([
+            ("imputacao", SimpleImputer(strategy="median", add_indicator=indicador)),
+            ("padronizacao", StandardScaler()),
+        ])
 
     categoricas = Pipeline([
         ("imputacao", SimpleImputer(strategy="most_frequent")),
@@ -116,81 +89,57 @@ def construir_preprocessamento() -> ColumnTransformer:
                                       sparse_output=False)),
     ])
 
-    return ColumnTransformer([
-        ("numericas", numericas_gerais, NUMERICAS_GERAIS),
-        ("ideb", numericas_ideb, NUMERICAS_IDEB),
-        ("categoricas", categoricas, CATEGORICAS),
-    ], remainder="drop", verbose_feature_names_out=False)
+    ramos = [("numericas", ramo(False), simples)]
+    if com_indicador:
+        ramos.append(("ausencia_informativa", ramo(True), com_indicador))
+    ramos.append(("categoricas", categoricas, CATEGORICAS))
+
+    return ColumnTransformer(ramos, remainder="drop", verbose_feature_names_out=False)
 
 
-def construir_pipeline(C: float = 1.0, max_iter: int = 2000,
-                       random_state: int = 42, estimador=None) -> Pipeline:
-    """Monta o `Pipeline` completo: pré-processamento + modelo.
+def construir_pipeline(C: float = 1.0, max_iter: int = 2000, random_state: int = 42,
+                       estimador=None, numericas=None) -> Pipeline:
+    """`Pipeline` completo: pré-processamento + modelo.
 
-    Sem `estimador`, usa a **Regressão Logística** — o modelo da entrega. O
-    parâmetro existe para que a comparação formal de algoritmos (notebook 03,
-    §10) rode todos os candidatos pelo **mesmo** pré-processamento e pela mesma
-    validação; trocar só o estimador é o que torna a comparação justa.
-
-    Três ramos no `ColumnTransformer`:
-
-    * numéricas gerais — imputação pela mediana + padronização;
-    * numéricas do IDEB — imputação pela mediana **com indicador de ausência**,
-      porque não ter IDEB divulgado é sinal, não ruído;
-    * categóricas — imputação pela categoria mais frequente + *dummy encoding*
-      (`drop="first"`), que remove uma categoria para evitar multicolinearidade
-      entre as dummies.
-
-    `handle_unknown="ignore"` cobre o caso real do split temporal: os municípios
-    do Acre só aparecem em 2024, então a UF `AC` é desconhecida para um modelo
-    treinado em 2023.
+    Sem `estimador`, usa a Regressão Logística com L2 — o modelo da entrega. O
+    parâmetro existe para que a comparação de algoritmos rode todos os
+    candidatos pelo mesmo pré-processamento; trocar só o estimador é o que
+    torna a comparação justa.
     """
     if estimador is None:
-        # A penalidade L2 é o padrão do LogisticRegression e é o que queremos:
-        # estabiliza os coeficientes sob a colinearidade residual entre blocos.
-        # (O argumento `penalty` foi depreciado no scikit-learn 1.8; omiti-lo mantém L2.)
-        estimador = LogisticRegression(
-            C=C,
-            solver="lbfgs",
-            max_iter=max_iter,
-            random_state=random_state,
-        )
-
-    return Pipeline([("preprocessamento", construir_preprocessamento()),
+        estimador = LogisticRegression(C=C, solver="lbfgs", max_iter=max_iter,
+                                       random_state=random_state)
+    return Pipeline([("preprocessamento", construir_preprocessamento(numericas)),
                      ("modelo", estimador)])
 
 
-# =============================================================================
-# CANDIDATOS DA COMPARAÇÃO FORMAL DE ALGORITMOS
-# =============================================================================
-#
-# Todos passam pelo mesmo pré-processamento e pela mesma validação ponderada.
-# Só o estimador muda — é isso que torna a comparação justa.
-#
-# Ficam de fora, por impossibilidade técnica e não por preferência:
-#   * SVM  — o `SVC` não produz probabilidade calibrada nativamente (só via
-#     Platt scaling, que é outro modelo por cima), e nossas métricas centrais
-#     (Brier, calibração) exigem probabilidade. Além disso é O(n²) em 21.792
-#     observações.
-#   * Modelos que não aceitam `sample_weight` — o alvo binomial ponderado
-#     depende inteiramente do peso; sem ele o problema deixa de existir.
-
 def modelos_candidatos(random_state: int = 42) -> dict:
-    """Catálogo dos algoritmos comparados no notebook 03, §10."""
+    """Catálogo dos algoritmos comparados no notebook de modelagem.
+
+    Os quatro da aula de classificação supervisionada — Regressão Logística,
+    Árvore de Decisão, SVM e Naive Bayes — mais os dois ensembles da aula de
+    otimização (Random Forest e Gradient Boosting) e o baseline obrigatório.
+
+    Todos passam pelo **mesmo** pré-processamento e pela mesma validação; só o
+    estimador muda, e é isso que torna a comparação justa.
+    """
     from sklearn.dummy import DummyClassifier
     from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
     from sklearn.naive_bayes import GaussianNB
+    from sklearn.svm import SVC
     from sklearn.tree import DecisionTreeClassifier
 
     return {
-        "Baseline (taxa média)": DummyClassifier(strategy="prior"),
+        "Baseline (classe majoritária)": DummyClassifier(strategy="most_frequent"),
         "Regressão Logística": LogisticRegression(
             C=1.0, solver="lbfgs", max_iter=2000, random_state=random_state),
-        "Naive Bayes": GaussianNB(),
         "Árvore de Decisão": DecisionTreeClassifier(
-            max_depth=6, min_samples_leaf=50, random_state=random_state),
+            max_depth=6, min_samples_leaf=30, random_state=random_state),
+        "SVM (RBF)": SVC(kernel="rbf", C=1.0, probability=True,
+                         random_state=random_state),
+        "Naive Bayes": GaussianNB(),
         "Random Forest": RandomForestClassifier(
-            n_estimators=200, max_depth=12, min_samples_leaf=20,
+            n_estimators=300, max_depth=12, min_samples_leaf=10,
             n_jobs=-1, random_state=random_state),
         "Gradient Boosting": GradientBoostingClassifier(
             n_estimators=150, max_depth=3, learning_rate=0.1,
