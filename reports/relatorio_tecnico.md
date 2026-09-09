@@ -1,37 +1,25 @@
 # Relatório Técnico — Predição de Risco de Alfabetização nos Municípios Brasileiros
 
-**Tech Challenge – Fase 3 | POSTECH AI Scientist**
+**Tech Challenge Fase 3 · POSTECH AI Scientist**
 
-Este documento consolida as **decisões analíticas e a metodologia** do projeto.
+Consolida as **decisões analíticas e a metodologia**. O [README](../README.md) traz a narrativa e
+a execução; os [notebooks](../notebooks/) trazem os resultados; este documento traz o *porquê* de
+cada escolha e o que foi descartado.
 
-| Documento | Papel |
-|---|---|
-| [`README.md`](../README.md) | narrativa, resultados e instruções de execução |
-| **este relatório** | por que cada decisão foi tomada, e o que foi descartado |
-| [`notebooks/`](../notebooks/) | os resultados reproduzíveis, célula a célula |
-| [`reports/model_card.json`](model_card.json) | ficha técnica gerada por código a cada execução |
-| [`reports/ranking_risco_municipios.csv`](ranking_risco_municipios.csv) | a saída operacional: risco previsto por município |
-
-**Nenhum número deste relatório foi digitado à mão.** Todos vêm do
-`model_card.json`, gerado por `python -m src.modeling.model_card`, ou de células
-executadas nos notebooks, com a referência indicada.
+**Nenhum número aqui foi digitado à mão** — todos vêm de `model_card.json`
+(`python -m src.modeling.model_card`) ou de células executadas, com a referência indicada.
 
 ---
 
 ## 1. Problema e unidade de análise
 
-O **Compromisso Nacional Criança Alfabetizada** pactua metas de alfabetização por município,
-aferidas pelo Saeb/INEP ao fim do 2º ano do ensino fundamental, com o corte de 743 pontos na
-escala de Língua Portuguesa. O enunciado pede um modelo supervisionado que preveja se **um aluno**
-será considerado alfabetizado.
+O **Compromisso Nacional Criança Alfabetizada** pactua metas por município, aferidas pelo Saeb ao
+fim do 2º ano com corte de 743 pontos. O enunciado pede um modelo supervisionado que preveja se
+**um aluno** será considerado alfabetizado.
 
-### 1.1 Por que o modelo descreve o município, e não o aluno
+### 1.1 Não existe microdado de aluno
 
-**Não existe microdado público de aluno para nenhuma das fontes deste projeto.** Não é uma
-escolha de conveniência — é uma restrição da matéria-prima, e vale a pena ser explícito sobre
-onde ela aparece:
-
-| Fonte | Grão mais fino disponível | Tem identificador de aluno? |
+| Fonte | Grão mais fino | Identificador de aluno? |
 |---|---|---|
 | Indicador Criança Alfabetizada (INEP) | município × ano × série × rede | não |
 | Censo Escolar — AFD, ATU, IED | município × ano × localização × dependência | não |
@@ -39,538 +27,438 @@ onde ela aparece:
 | IDEB Anos Iniciais | município × rede × ciclo | não |
 | Metas do CNCA | município × rede | não |
 
-Nenhuma traz sexo, idade, trajetória, frequência ou qualquer atributo individual — nem uma chave
-que permitisse ligá-las entre si no grão do estudante. Um modelo "de aluno" construído sobre
-essas bases seria um modelo de município com outro nome.
+Nenhuma traz sexo, idade, trajetória ou frequência — nem chave que permitisse ligá-las no grão do
+estudante.
 
-**A ponte adotada:** a chance de uma criança ser alfabetizada é tratada como **dada pelo contexto
-socioeconômico, educacional e político do município** em que ela estuda. Modela-se o contexto —
-formação do corpo docente, tamanho das turmas, esforço docente, nível socioeconômico das
-famílias, ruralidade, porte, desempenho pregresso da rede e unidade federativa — e a leitura
-para o aluno é direta: *uma criança que estuda num município sinalizado em risco tem chance
-substancialmente menor de chegar alfabetizada ao fim do 2º ano*.
+### 1.2 A ponte: modelar o contexto que responde pela criança
 
-**A limitação inseparável dessa escolha é a falácia ecológica.** Duas crianças do mesmo município
-recebem exatamente a mesma predição. O modelo descreve a condição média, não a trajetória
-individual — e a §15 traz essa ressalva junto de todas as outras.
+O município entra como **em risco** quando `taxa_alfabetizacao < 50%` no ciclo de 2024 — menos da
+metade das suas crianças chega alfabetizada. A leitura para a pergunta original é direta: *uma
+criança que estuda ali tem chance substancialmente menor de ser considerada alfabetizada*.
 
-### 1.2 O rótulo: `em risco = taxa < 50%`
+**Por que este corte.** É absoluto e interpretável sem contexto estatístico — um gestor entende na
+hora — e cai numa região densa da distribuição, sem isolar uma cauda residual. Duas alternativas
+foram descartadas:
 
-O município entra como **em risco** quando **menos da metade** das suas crianças chega
-alfabetizada. Duas alternativas foram consideradas e descartadas:
-
-| Alternativa | Por que foi descartada |
+| Alternativa | Por que saiu |
 |---|---|
-| A **meta pactuada** de cada município | é calculada a partir da taxa de 2023 do próprio município — usá-la como rótulo tornaria o alvo função da própria história do município, e a meta vira preditor circular |
-| A **média nacional do ano** | é um alvo *relativo*: metade do país está sempre em risco por construção, melhore o país ou piore. Não se conecta a nenhum compromisso absoluto |
+| A **meta pactuada** de cada município | é calculada a partir da taxa de 2023 do próprio município: o alvo viraria função da própria história, e a meta, um preditor circular |
+| A **média nacional do ano** | é relativa — metade do país está sempre em risco por construção, melhore o país ou piore |
 
-O corte em 50% é **absoluto e interpretável sem contexto estatístico**: um prefeito entende
-imediatamente o que significa. E cai numa região densa da distribuição (`notebooks/02`, §1), o
-que evita isolar uma cauda residual.
+Resultado: **1.464 dos 5.396 municípios em risco — 27,1%.** Classe minoritária, o que define as
+métricas da §6.
 
-Resultado no ciclo modelado: **1.486 dos 5.448 municípios em risco — 27,3%.** Classe minoritária,
-o que define as métricas da §9.
+**A limitação inseparável é a falácia ecológica:** o modelo descreve o município, não uma criança
+específica. Duas crianças do mesmo lugar recebem a mesma predição.
 
-### 1.3 Um único ciclo
+### 1.3 Histórico e atualidade
 
-A modelagem usa apenas **2024**, uma linha por município. O motivo está na EDA: o Rio Grande do
-Sul caiu **20,2 p.p.** entre os dois ciclos (§5, A3), um choque exógeno que nenhuma variável da
-base descreve. Isso quebra a comparabilidade entre 2023 e 2024 e inviabiliza tratar os dois
-ciclos como amostras do mesmo processo.
+| Natureza | Variáveis | Por que é legítima |
+|---|---|---|
+| **Histórico** | `taxa_2023`, `media_portugues_2023`, `ideb_2021`, `taxa_aprovacao_2021` | anteriores ao ciclo previsto |
+| **Atualidade** | INSE (média, 7 níveis, ruralidade, porte), AFD, IED, ATU, UF, capital/interior | descrevem o município, não o resultado da prova |
 
-**A contrapartida é declarada, não escondida:** o ciclo escolhido é justamente o atingido pelo
-choque. Os municípios gaúchos entram no modelo com taxa deprimida por um evento conjuntural, e o
-classificador lê isso como estrutura. **O risco previsto para o RS está superestimado** — e o
-coeficiente da UF (OR 11,5) precisa ser lido com essa ressalva.
+**Painel:** os **5.396** municípios de 2024 que têm histórico de 2023, de 5.448 no ciclo. Os 52
+restantes (majoritariamente do Acre) só existem em 2024.
+
+### 1.4 Um único ciclo modelado
+
+O Rio Grande do Sul caiu **20,2 p.p.** entre 2023 e 2024 (§4, A3), um choque exógeno que nenhuma
+variável descreve. Empilhar os dois ciclos como amostras do mesmo processo assumiria uma
+comparabilidade que não existe.
+
+**A contrapartida é declarada:** para o RS o modelo vê um histórico bom (pré-choque) e um
+resultado ruim (pós-choque), e lê a diferença como estrutura. O efeito é absorvido pela dummy da
+UF (*odds ratio* 14,98), e **o risco previsto para o estado é pessimista demais**.
 
 ---
 
 ## 2. Origem dos dados
 
-### 2.1 Pipeline medalhão reconstruída localmente
+### 2.1 Pipeline medalhão reconstruída
 
-A Fase 2 entregou a arquitetura Bronze → Silver → Gold em AWS Glue + S3 + Athena. A Fase 3 a
-**reproduz em Python/pandas, sem nuvem**, preservando a semântica: schema explícito, hash de
-deduplicação, DQ com quarentena, particionamento Hive-style por ano e escrita idempotente.
+A Fase 2 entregou Bronze → Silver → Gold em AWS Glue + S3 + Athena. A Fase 3 **reproduz em
+Python/pandas, sem nuvem**, preservando schema explícito, hash de deduplicação, DQ com quarentena,
+particionamento Hive-style e escrita idempotente.
 
-**Por que reconstruir em vez de só consumir o Parquet da Gold?** Três motivos:
-
-1. a Gold da Fase 2 foi desenhada para **análise descritiva**, e suas colunas mais informativas
-   são justamente as que vazam o alvo (§4);
-2. as fontes externas precisavam entrar **na Silver e na Gold**, sob as mesmas regras de
-   qualidade — sem elas restariam ~4 variáveis legítimas;
-3. reprodutibilidade sem credenciais: qualquer avaliador roda um comando e reconstrói tudo.
+**Por que reconstruir em vez de consumir o Parquet pronto?** Porque a Gold da Fase 2 foi desenhada
+para análise descritiva e suas colunas mais informativas são as que vazam o alvo (§3); porque as
+fontes externas precisavam entrar **na Silver e na Gold**, sob as mesmas regras; e porque assim
+qualquer avaliador reproduz tudo com um comando, sem credenciais.
 
 | Camada | Resultado (`notebooks/01`) |
 |---|---|
-| Bronze | 10 entidades, **719.757 registros**, score de qualidade 100% |
-| Silver | **54.165 duplicatas removidas**, **890 registros em quarentena** |
+| Bronze | 10 entidades, **719.757 registros**, DQ 100% |
+| Silver | **54.165 duplicatas removidas**, **890 em quarentena** |
 | Gold | 5 visões — as 4 da Fase 2 + `base_ml_alfabetizacao` |
 | Idempotência | 29/29, 30/30 e 10/10 partições idênticas em duas execuções |
 
-### 2.2 Fontes e enriquecimento
+Sem o enriquecimento externo, a maior correlação disponível com o alvo seria a de `ano` (0,06).
+Com ele, 0,53.
 
-| Origem | Conteúdo | Papel |
-|---|---|---|
-| INEP / Base dos Dados (5 CSVs) | indicador por município e UF; metas Brasil/UF/município | alvo e metas |
-| Censo Escolar — AFD (2023, 2024) | adequação da formação docente | enriquecimento |
-| Censo Escolar — ATU (2023, 2024) | média de alunos por turma | enriquecimento |
-| Censo Escolar — IED (2023, 2024) | esforço docente | enriquecimento |
-| Saeb — INSE (2023) | nível socioeconômico municipal | enriquecimento |
-| IDEB Anos Iniciais (ciclo 2021) | IDEB, notas e taxa de aprovação | preditor defasado |
-
-O enriquecimento **não era opcional**: sem ele, a maior correlação disponível com o alvo seria a
-de `ano` (0,06). Com ele, 0,53 (`ideb_2021`).
-
-### 2.3 Grão da base analítica
-
-A base construída tem **10.896 linhas** (município × ano, rede municipal, ciclos 2023 e 2024),
-cobrindo 5.500 municípios e **25 das 27 UFs**. A modelagem consome dela o recorte de **2024**:
-**5.448 municípios, uma linha cada**.
-
-A rede municipal foi escolhida por ser a única com o mesmo número de municípios nos dois ciclos
-(5.448) e por ser a rede sob gestão direta do município — que é o destinatário das recomendações.
-A rede *total* só existe em 2024 e para 398 municípios.
-
----
-
-## 3. Qualidade de dados — achados e tratamento
-
-Todos viraram check de DQ ou nota de tratamento (`notebooks/01`, §2):
+### 2.2 Qualidade de dados — achados e tratamento
 
 | # | Achado | Tratamento |
 |---|---|---|
-| 1 | **O arquivo do INSE repete a mesma chave até 7 vezes** (125.741 linhas para 5.558 municípios) | ingerido como chega no Bronze; deduplicado na Silver pelo `_record_hash` — **54.165 linhas**. Sem isso, o join multiplicaria a base |
-| 2 | 890 estratos do INSE sem `media_inse` (omissão por sigilo estatístico) | quarentena, com motivo registrado |
-| 3 | Percentual de nível do INSE **sem alunos vem em branco, não como zero** | verificado que, tratando branco como zero, os 8 níveis somam 100% em todas as linhas (média 100,00; desvio 0,01) → zero estrutural, não ausência |
-| 4 | Cabeçalhos multi-nível nas planilhas do INEP | `skiprows` até a linha de nomes técnicos |
-| 5 | Nulos como texto (`"--"`, `"-"`) | `na_values` |
-| 6 | `CO_MUNICIPIO` como float nos xlsx, texto de 7 dígitos no CSV | normalização com `zfill(7)` antes de qualquer join |
-| 7 | Chave de rede divergente entre arquivos (código vs. texto) | normalização via `REDE_MAP` |
-| 8 | **Roraima ausente do arquivo do INEP** em qualquer rede, nos dois ciclos; DF não tem rede municipal | declarado como limitação de cobertura |
+| 1 | **O arquivo do INSE repete a mesma chave até 7 vezes** (125.741 linhas, 71.576 hashes) | ingerido como chega na Bronze, deduplicado na Silver. Sem isso o join multiplicaria a base por até 7 |
+| 2 | 890 estratos sem `media_inse` (sigilo estatístico) | quarentena com motivo registrado |
+| 3 | Percentual de nível do INSE **sem alunos vem em branco, não zero** | verificado que, tratando branco como zero, os 8 níveis somam 100% em todas as linhas → zero estrutural |
+| 4 | Cabeçalhos multi-nível, nulos como `"--"`, `CO_MUNICIPIO` como float | `skiprows`, `na_values`, `zfill(7)` antes de qualquer join |
+| 5 | Chave de rede divergente (código vs. texto) | normalização via `REDE_MAP` |
+| 6 | **Roraima ausente do arquivo do INEP**; DF não tem rede municipal | limitação de cobertura: 25 das 27 UFs |
 
 ---
 
-## 4. Tratamento de data leakage
+## 3. Tratamento de data leakage
 
-É o núcleo metodológico do projeto. O arquivo do INEP traz colunas que parecem excelentes
-preditoras e são, na verdade, **a mesma medição que gerou o alvo**.
+É o núcleo metodológico. O arquivo do INEP traz colunas que parecem excelentes preditoras e são
+**a mesma medição que gerou o alvo**.
 
-### 4.1 O grau de vazamento foi medido, não presumido
+### 3.1 Medido, não presumido
 
-| Coluna | Por que vaza | Correlação com o alvo |
+| Coluna | Por que vaza | Correlação |
 |---|---|---:|
-| `media_portugues` | mesma escala Saeb da qual a taxa é o % de alunos com 743+ pontos | **0,927** |
-| `proporcao_aluno_nivel_*` | distribuição de proficiência da qual a taxa deriva | **0,986** (soma dos níveis 5–8) |
-| `meta_alfabetizacao_2025` | a meta é calculada a partir da taxa de 2023 | **0,966** |
+| `media_portugues` (2024) | mesma escala Saeb da qual a taxa é o % acima de 743 pontos | **0,927** |
+| `proporcao_aluno_nivel_*` | distribuição de proficiência da qual a taxa deriva | **0,986** (níveis 5-8) |
+| `meta_alfabetizacao_2025` | calculada a partir da taxa de 2023 | **0,966** |
 | `nivel_alfabetizacao` | a própria taxa discretizada | — |
 | IDEB dos ciclos 2023 e 2025 | contemporâneo e posterior ao alvo | — |
 
-### 4.2 O critério de exclusão
+### 3.2 O critério
 
-Não é a força da correlação. É: **esta informação estaria disponível no momento em que a predição
-precisaria ser feita?**
+Não é a força da correlação. É: **esta informação estaria disponível no momento da predição?**
 
-Por isso `media_portugues` (r = 0,927) sai, e o **IDEB de 2021** (r = 0,54) fica — publicado dois
-anos antes do ciclo modelado.
+Daí a decisão que estrutura o projeto: **vazamento é contemporâneo, não histórico.**
+`media_portugues` de **2024** é vazamento e sai; a de **2023** é um preditor honesto — e acabou
+sendo a variável contínua mais importante do modelo. O IDEB de 2021 (r = 0,54) fica pelo mesmo
+motivo.
 
-> **Nuance registrada.** A exclusão vale para a coluna **contemporânea**. `media_portugues`
-> *defasada* (do ciclo anterior) seria um preditor legítimo. Não a usamos porque, com apenas dois
-> ciclos, defasar consumiria o único ciclo alternativo e substituiria o modelo estrutural por um
-> modelo de inércia — que prevê bem e explica pouco (§11).
+### 3.3 Onde é aplicado
 
-### 4.3 Onde o tratamento é aplicado
+Em `config.COLUNAS_VAZAMENTO` — **23 colunas**, cada uma com o motivo — removidas por
+`gold.montar_base_ml()`. A decisão fica auditável no repositório, e um `assert` no `notebooks/01`
+verifica que nenhuma sobreviveu.
 
-Em `src/preprocessing/config.py::COLUNAS_VAZAMENTO` — **23 colunas**, cada uma com o motivo
-registrado — e removidas programaticamente por `gold.montar_base_ml()`. A decisão fica auditável
-no repositório, e um `assert` no `notebooks/01` verifica que nenhuma sobreviveu até a base de
-modelagem.
+A **meta pactuada** também não entra: ela reaparece no `notebooks/04` §5, mas só como régua de
+comparação **depois** da predição.
 
-**A meta pactuada também não entra no modelo.** Ela reaparece no `notebooks/04` §4, mas apenas
-como **régua de comparação depois da predição** — nunca como preditor.
+### 3.4 O segundo vazamento, mais sutil
 
-### 4.4 O segundo vazamento, mais sutil
-
-Estatísticas de pré-processamento também vazam. Mediana da imputação, média e desvio da
-padronização e categorias do encoder são calculadas **dentro do `Pipeline`**, portanto só com o
-fold de treino. Padronizar antes de separar os folds usaria informação do conjunto de validação —
-e não geraria erro nenhum.
+Mediana da imputação, média e desvio da padronização e categorias do encoder são calculadas
+**dentro do `Pipeline`**, portanto só com o fold de treino. Padronizar antes de separar os folds
+usaria informação da validação — e não geraria erro nenhum.
 
 ---
 
-## 5. Análise exploratória — os achados que decidiram a modelagem
+## 4. Análise exploratória — os achados que decidiram a modelagem
 
-`notebooks/02`. Cada seção existe para responder a uma pergunta cuja resposta muda a modelagem.
+`notebooks/02`, em 9 etapas.
 
 | # | Achado | Consequência |
 |---|---|---|
-| A1 | Alvo aproximadamente simétrico (assimetria ≈ −0,15), sem massa nos extremos (~1% em 100%, ~1,5% abaixo de 20%) | o corte em 50% cai em região densa; sem risco de separação perfeita |
-| A2 | Dispersão **dentro** de cada região é enorme; amplitude entre regiões de ~23 p.p. | métricas de ordenação e calibração, não acurácia |
-| A3 | **O RS caiu 20,2 p.p.** de 2023 para 2024, com 89,6% dos municípios em queda — enquanto todas as demais regiões melhoraram | modelagem restrita a um ciclo; risco do RS declarado como superestimado |
-| A4 | Sem enriquecimento externo, a maior correlação disponível seria a de `ano` (0,06); com ele, 0,53 | o enriquecimento não era opcional |
-| A5 | **Paradoxo de Simpson no INSE:** Spearman agregado 0,29; dentro das regiões — Norte 0,31, Centro-Oeste 0,20, Sul 0,04, Sudeste 0,01, **Nordeste −0,14** | `sigla_uf` como controle **obrigatório** |
+| A1 | Alvo aproximadamente simétrico, ~1% em 100% e ~1,5% abaixo de 20% | o corte em 50% cai em região densa; sem separação perfeita |
+| A2 | Dispersão dentro de cada região é enorme; amplitude de ~23 p.p. entre regiões | métricas de ordenação e calibração, não acurácia |
+| A3 | **O RS caiu 20,2 p.p.**, com 89,6% dos municípios em queda | modelar um ciclo; risco do RS declarado como pessimista |
+| A4 | Sem enriquecimento, correlação máxima 0,06; com ele, 0,53 | o enriquecimento não era opcional |
+| A5 | **Paradoxo de Simpson no INSE:** agregado 0,29; Norte 0,31, Centro-Oeste 0,20, Sul 0,04, Sudeste 0,01, **Nordeste −0,14** | `sigla_uf` como controle **obrigatório** |
 | A6 | Ceará e Pernambuco: mesmo INSE (4,37), taxas de 90,1% e 63,0% | hipótese de efeito de política estadual (H4) |
 | A7 | AFD, IED e níveis do INSE são **composicionais** (somam 100%) | descartar uma categoria de referência por bloco |
-| A8 | No bloco IDEB, `ideb`/notas correlacionam 0,953–0,961 e `indicador_rendimento`/`taxa_aprovacao` correlacionam **0,996** | manter só `ideb_2021` e `taxa_aprovacao_2021` |
-| A9 | Escalas incomparáveis (de 3 a 80.160 contra 4 a 6) | padronização obrigatória |
-| A10 | Mesmo município correlaciona **0,64** entre seus dois ciclos | dois terços do sinal cabem num ciclo só; e com uma linha por município o vazamento entre folds deixa de ser possível por construção |
+| A8 | No bloco IDEB, `ideb`/notas correlacionam 0,953-0,961; rendimento e aprovação, **0,996** | manter só `ideb_2021` e `taxa_aprovacao_2021` |
+| A9 | Escalas de 3 a 80.160 contra 4 a 6 | padronização obrigatória |
+| A10 | Mesmo município correlaciona **0,64** entre os ciclos | justifica o bloco histórico **e** exige uma linha por município |
 
 ---
 
-## 6. Seleção de variáveis
+## 5. Seleção de variáveis e pré-processamento
 
 `src/modeling/features.py`. **28 colunas de entrada → 53 features após o pré-processamento.**
 
 | Bloco | Variáveis | Referência descartada |
 |---|---:|---|
+| Histórico | 4 | — |
 | Formação docente (AFD) | 4 | `afd_ai_grupo_5` (sem curso superior) |
 | Esforço docente (IED) | 5 | `ied_ai_nivel_1` (menor esforço) |
 | Níveis do INSE | 7 | `inse_pc_nivel_1` (nível mais baixo) |
 | Tamanho de turma (ATU) | 5 | — (médias, não composicional) |
 | Socioeconômico — outras | 3 | — |
-| IDEB 2021 (defasado) | 2 | — (com indicador de ausência) |
 | Categóricas | 2 | *dummy encoding* (`drop="first"`) |
 
-**Duas exclusões que não vieram da EDA:**
+Fora do modelo: **`regiao`**, função determinística de `sigla_uf` (as dummies já a codificam), e
+**`ano`**, constante no ciclo modelado.
 
-- **`regiao`** é função determinística de `sigla_uf` — as dummies de UF já a codificam
-  integralmente. Incluí-la só somaria colinearidade.
-- **`ano`** fica fora porque a modelagem usa um único ciclo: a coluna é constante.
+Três ramos no `ColumnTransformer`: numéricas comuns (mediana → `StandardScaler`); **IDEB e
+aprovação com `add_indicator=True`**, porque 13,3% e 5,0% de ausência concentrada em municípios
+pequenos e isolados significa que **a ausência é sinal**; e categóricas com moda →
+`OneHotEncoder(drop="first", handle_unknown="ignore")`.
 
----
-
-## 7. Pipeline de pré-processamento
-
-Três ramos no `ColumnTransformer`, todos **dentro** do `Pipeline`:
-
-| Ramo | Tratamento | Motivo |
-|---|---|---|
-| Numéricas gerais | mediana → `StandardScaler` | a penalidade L2 encolhe coeficientes proporcionalmente à escala; sem padronizar, puniria arbitrariamente as variáveis de escala pequena |
-| Bloco IDEB | mediana **com `add_indicator=True`** → `StandardScaler` | 13,3% de ausência concentrada em municípios pequenos e isolados: **a ausência é sinal** — e o indicador confirma, com OR 1,32 |
-| Categóricas | moda → `OneHotEncoder(drop="first")` | *dummy encoding* — remove uma categoria para evitar multicolinearidade |
-
-`handle_unknown="ignore"` cobre UFs eventualmente ausentes de uma partição de treino.
-
-Todo o pré-processamento vive **dentro** do `Pipeline`, que é o objeto passado ao
-`cross_validate` e ao `GridSearchCV` — é isso que garante que nenhuma estatística de
-pré-processamento atravesse a fronteira entre folds.
+> **Nota sobre normalização** (aula de classificação): árvores e Naive Bayes não precisam;
+> Regressão Logística e SVM precisam. Como todos passam pelo **mesmo** `Pipeline`, padronizar não
+> prejudica os primeiros, garante os segundos e mantém a comparação justa.
 
 ---
 
-## 8. Validação
+## 6. Validação e métricas
 
-Com o alvo no grão do município, há **uma linha por município** — nada de peso amostral, nada de
-grupos a preservar. A validação volta a ser a padrão do Scikit-learn:
+**`train_test_split` estratificado 75/25** — 4.047 municípios de treino e **1.349 de teste,
+tocados uma única vez**. Sobre o treino, **`StratifiedKFold` de 5 folds** para comparar algoritmos
+e ajustar hiperparâmetros, sempre com `return_train_score=True`.
 
-| Etapa | Estratégia | Pergunta que responde |
-|---|---|---|
-| Partição | `train_test_split` estratificado 75/25 | quanto o modelo erra em municípios que ele nunca viu? |
-| Seleção e ajuste | `StratifiedKFold` de 5 folds **sobre o treino** | qual algoritmo e qual regularização, sem tocar no teste? |
-
-**Estratificado nas duas etapas** porque a classe de risco é minoritária (27,3%): uma partição
-aleatória simples poderia produzir folds com prevalências bem diferentes, e as métricas ficariam
-instáveis por acidente de sorteio.
-
-O conjunto de teste (1.362 municípios) é tocado **uma única vez**, no fim do `notebooks/03`.
-
-> **O que a mudança de abordagem resolveu.** Na formulação anterior — alvo binomial ponderado —
-> cada município gerava duas linhas idênticas com rótulos opostos, e toda a informação vivia no
-> `sample_weight`. Um scorer que ignorasse o peso devolvia AUC exatamente 0,5, e fazer o peso
-> chegar ao scorer exigiria declarar *metadata routing* em cada etapa aninhada do
-> `ColumnTransformer` (testado: falha em `StandardScaler.fit_transform`). Era preciso um laço de
-> validação escrito à mão. Com o alvo municipal, `GridSearchCV` e `cross_validate` funcionam
-> direto — e o SVM e o KNN, antes inviáveis, entram na comparação.
-
----
-
-## 9. Métricas: por que não acurácia
-
-A classe de risco é **minoritária**. Um modelo que responda "fora de risco" para todo mundo
-acerta **72,7%** e não serve para nada. A acurácia é reportada sempre ao lado desse baseline,
-justamente para deixar claro que sozinha ela não diz nada.
+Estratificado nas duas etapas porque a classe de risco é minoritária: um sorteio simples poderia
+produzir partições com prevalências diferentes e as métricas ficariam instáveis por acidente.
 
 | Métrica | Por que está aqui |
 |---|---|
-| **Recall da classe de risco** | a métrica prioritária. Um falso alarme custa uma visita técnica; um falso negativo custa uma geração |
-| **PR-AUC** | mais informativa que a ROC quando a classe de interesse é minoritária — não se deixa inflar pelos verdadeiros negativos, que aqui são maioria |
-| **ROC-AUC** | capacidade de ordenar municípios por risco, comparável entre modelos |
-| **Curva de calibração** | permite ler a saída como *probabilidade*, e não só como ordem — é o que autoriza o corte por cobertura da §13 |
-
-### 9.1 Resultado no conjunto de teste
-
-`notebooks/03`, §7 — 1.362 municípios nunca vistos:
-
-| Métrica | Valor |
-|---|---:|
-| ROC-AUC | **0,880** |
-| PR-AUC | **0,693** |
-| Recall da classe de risco | 0,577 |
-| Precisão da classe de risco | 0,679 |
-| Acurácia | 0,811 |
-| *Acurácia do baseline (classe majoritária)* | *0,728* |
-
-O recall de 0,577 é do limiar padrão de 0,5, que **não é o limiar de operação** — a §13 mostra
-como escolhê-lo a partir da cobertura desejada.
+| **Recall da classe de risco** | a prioritária. Um falso alarme custa uma visita técnica; um falso negativo custa uma geração |
+| **PR-AUC** | mais informativa que a ROC com classe minoritária — não se infla com os verdadeiros negativos |
+| **ROC-AUC** | capacidade de ordenar municípios por risco |
+| **Curva de calibração** | permite ler a saída como *probabilidade*, e é o que autoriza o corte por cobertura da §9 |
+| *Acurácia* | reportada **sempre ao lado do baseline** de 72,9% |
 
 ---
 
-## 10. Otimização de hiperparâmetros
+## 7. Comparação de algoritmos
 
-`GridSearchCV` sobre `C` ∈ {0,01; 0,1; 1; 10; 100}, otimizando PR-AUC com `StratifiedKFold` de 5
-folds (`notebooks/03`, §6):
+Mesmo pré-processamento, mesma validação, mesma partição — só o estimador muda (`notebooks/03`,
+Etapa 9; números em `model_card.json`). Os quatro da aula de classificação supervisionada mais os
+dois ensembles da aula de otimização.
 
-- adotado **`C = 10,0`**, com PR-AUC de validação **0,786**;
-- diferença treino-validação de **0,0070** — praticamente zero.
-
-**Conclusão honesta:** o modelo **não sofria de overfitting**, e a busca não "resolveu" nenhum
-problema. Com 4.086 municípios de treino para 53 features num modelo linear, a regularização L2
-é salvaguarda contra colinearidade residual, não remédio para sobreajuste. Reportar isso é mais
-útil do que apresentar a otimização como se tivesse produzido um ganho.
-
-### 10.1 `class_weight="balanced"` foi testado e rejeitado
-
-Seria o reflexo natural diante de uma classe minoritária. Medimos:
-
-| Configuração | ROC-AUC | Desvio de calibração |
-|---|---:|---:|
-| Sem `class_weight` | 0,879 | **0,045** |
-| `class_weight="balanced"` | 0,879 | 0,111 |
-
-**Não muda a capacidade de ordenar e piora a calibração em 2,5×.** Como o projeto lê a saída como
-probabilidade — e é isso que permite escolher o limiar por cobertura —, o desbalanceamento é
-tratado **na escolha do limiar**, não no peso das classes.
-
----
-
-## 11. Comparação de algoritmos
-
-Todos os candidatos pelo **mesmo** pré-processamento, a mesma validação estratificada e a mesma
-partição. Só o estimador muda (`notebooks/03`, §5; números em `model_card.json`).
-
-As métricas da comparação são **independentes de limiar** — recall e precisão dependem do corte
-de decisão, que só é escolhido depois, e compará-los aqui premiaria o modelo mais alarmista.
-
-| Modelo | ROC-AUC | PR-AUC | Gap treino-validação |
-|---|---:|---:|---:|
-| Gradient Boosting | 0,8974 | **0,7964** | 0,0623 |
-| **Regressão Logística** | **0,9027** | 0,7853 | **0,0070** |
-| Random Forest | 0,8859 | 0,7817 | 0,0745 |
-| SVM (RBF) | 0,8873 | 0,7772 | 0,0613 |
-| KNN | 0,8433 | 0,6938 | 0,1567 |
-| Árvore de Decisão | 0,8450 | 0,6889 | 0,0256 |
-| Naive Bayes | 0,8575 | 0,6602 | 0,0060 |
-| Baseline (classe majoritária) | 0,5000 | 0,2729 | 0,0000 |
+| Modelo | ROC-AUC | PR-AUC | Recall | Precisão | Gap treino-val. | Tempo (s) |
+|---|---:|---:|---:|---:|---:|---:|
+| **Regressão Logística** | **0,9146** | 0,8093 | 0,666 | 0,763 | **0,0084** | 1,0 |
+| Gradient Boosting | 0,9117 | **0,8129** | 0,664 | 0,765 | 0,0607 | 1,8 |
+| Random Forest | 0,9096 | 0,8095 | 0,585 | 0,795 | 0,0587 | 0,8 |
+| SVM (RBF) | 0,9010 | 0,7991 | 0,604 | 0,810 | 0,0536 | 2,6 |
+| Árvore de Decisão | 0,8791 | 0,7410 | 0,595 | 0,730 | 0,0388 | 0,9 |
+| Naive Bayes | 0,8656 | 0,6739 | **0,926** | 0,447 | 0,0062 | 0,1 |
+| Baseline (classe majoritária) | 0,5000 | 0,2713 | 0,000 | 0,000 | 0,0000 | 3,5 |
 
 **Leitura:**
 
-1. **A Regressão Logística tem o melhor ROC-AUC do conjunto** e fica a 0,011 do melhor PR-AUC —
-   dentro de qualquer margem razoável. Não é preciso argumentar "empata e é mais simples": ela
-   lidera a métrica de ordenação.
-2. **Sobreajusta quase dez vezes menos que os ensembles** (0,0070 contra 0,0623 e 0,0745). O
-   KNN é o extremo oposto, com gap de 0,157.
-3. **Sete famílias diferentes param na mesma faixa de PR-AUC (0,66–0,80).** Do linear ao boosting,
-   do baseado em distância ao probabilístico: **a limitação é a informação disponível, não a
-   capacidade de modelo.** É a justificativa quantitativa das evoluções futuras — microdados de
-   aluno e variáveis de política moveriam o resultado; um oitavo algoritmo, não.
-4. **Nenhum candidato ficou de fora.** Na formulação anterior, SVM e KNN eram inviáveis (o peso
-   amostral dobrava a base para 21.792 observações e o `SVC` é O(n²)). Com 5.448 linhas, o
-   catálogo completo das aulas coube.
+1. **A Regressão Logística lidera o ROC-AUC** e fica a 0,0036 do melhor PR-AUC — dentro do desvio
+   entre folds (0,026). E **sobreajusta sete vezes menos** que os ensembles. A escolha se sustenta
+   em resultado medido, não em preferência por simplicidade.
+2. **O Naive Bayes tem recall 0,926 e precisão 0,447**: dispara alarme para quase todo mundo. É o
+   efeito esperado da premissa de independência aplicada a três blocos composicionais, e confirma
+   empiricamente o descarte que estaria só em prosa.
+3. **O baseline acerta 72,9% sem prever ninguém em risco** — a prova de que acurácia sozinha não
+   serve como critério.
 
-**Decisão:** a Regressão Logística fica — lidera o ROC-AUC, sobreajusta menos, calibra melhor e é
-a única que responde "por quê" em unidades que um gestor entende.
+### 7.1 Contribuição de cada bloco de variáveis
+
+| Bloco | ROC-AUC | PR-AUC |
+|---|---:|---:|
+| Só histórico | 0,9128 | **0,8109** |
+| Só atualidade | 0,8887 | 0,7587 |
+| Histórico + atualidade | **0,9146** | 0,8093 |
+
+**O histórico carrega quase todo o sinal preditivo** — sozinho ele empata com o modelo completo (e
+até o supera marginalmente no PR-AUC, dentro do ruído). Isso é esperado: desempenho educacional
+tem forte inércia (A10), e o passado do próprio município resume boa parte do que as variáveis de
+contexto tentam capturar.
+
+**A conclusão prática é a oposta de "remover o bloco de atualidade".** Ele é o único que responde
+*o que fazer*: o histórico diz que o município vai mal, mas só o contexto diz que a formação
+docente ou o tamanho da turma são as alavancas. Um modelo só com histórico prevê bem e não
+recomenda nada.
+
+### 7.2 Otimização de hiperparâmetros
+
+`GridSearchCV` sobre `C` ∈ {0,01; 0,1; 1; 10; 100}, `scoring="average_precision"`:
+
+| C | PR-AUC validação | PR-AUC treino | Gap |
+|---:|---:|---:|---:|
+| 0,01 | 0,7664 | 0,7743 | 0,0079 |
+| 0,1 | 0,8065 | 0,8224 | 0,0159 |
+| **1,0** | **0,8093** | 0,8294 | 0,0201 |
+| 10 | 0,8074 | 0,8301 | 0,0227 |
+| 100 | 0,8067 | 0,8302 | 0,0236 |
+
+**`C = 1,0`**, com gap muito abaixo do limiar de alerta de 0,05 usado na aula. A *validation
+curve* mostra treino e validação caminhando coladas em todo o intervalo.
+
+**Conclusão honesta: não havia overfitting para resolver.** Com 4.047 municípios de treino para 53
+features num modelo linear, a penalidade L2 é salvaguarda contra colinearidade residual, não
+remédio para sobreajuste. Note também que o desvio entre folds (0,026) é **maior** que a diferença
+entre `C = 0,1` e `C = 100`.
+
+### 7.3 Avaliação final no teste
+
+| Métrica | Valor |
+|---|---:|
+| ROC-AUC | **0,8978** |
+| PR-AUC | **0,7535** |
+| Recall (risco) | 0,6230 |
+| Precisão (risco) | 0,7575 |
+| Acurácia | 0,8436 |
+| *Acurácia do baseline* | *0,7287* |
+
+Matriz de confusão: 910 verdadeiros negativos, 228 verdadeiros positivos, **138 falsos negativos**
+(o erro caro — municípios em risco que ficaram fora da lista) e 73 falsos positivos.
+
+Praticamente o mesmo da validação cruzada: não houve sobreajuste à partição.
+
+### 7.4 Calibração
+
+Desvio médio absoluto de **0,032** entre previsto e observado por decil, com leve subestimação do
+risco na faixa intermediária. É calibração suficiente para ler a saída como probabilidade — e é
+isso que autoriza compará-la diretamente com a meta pactuada.
 
 ---
 
-## 12. Interpretabilidade
+## 8. Interpretabilidade
 
-Três lentes, porque cada uma responde a uma pergunta diferente (`notebooks/03`, §9). Os valores
-são **para a classe de risco**: OR abaixo de 1 significa *reduz* o risco.
+Três lentes (`notebooks/03`, Etapa 16), porque respondem a perguntas diferentes.
 
-| | Coeficientes (OR de risco) | Permutation Importance (queda no PR-AUC) | SHAP (média absoluta) |
+| Lente | Primeiro colocado | Segundo | Terceiro |
 |---|---|---|---|
-| 1º | `sigla_uf_CE` — **0,006** | `sigla_uf` — **0,345** | `media_inse` — 0,816 |
-| 2º | `sigla_uf_BA` — 11,68 | `media_inse` — 0,137 | `ideb_2021` — 0,664 |
-| 3º | `media_inse` — 0,391 | `ideb_2021` — 0,103 | `sigla_uf_RS` — 0,468 |
+| Coeficientes (log-odds) | `sigla_uf_RS` +2,71 | `sigla_uf_GO` −2,07 | `sigla_uf_BA` +1,94 |
+| Permutation importance | `sigla_uf` **0,211** | `media_portugues_2023` 0,078 | `ideb_2021` 0,046 |
+| SHAP (média absoluta) | dummies de UF | `media_portugues_2023` | `ideb_2021` |
 
-As três apontam o mesmo conjunto: **território, condição socioeconômica e desempenho pregresso.**
-A ordem interna difere porque medem coisas distintas — o coeficiente do Ceará é o maior de todos,
-mas o SHAP mede contribuição **média por predição** e aquela dummy só se ativa em 184 municípios;
-a *permutation* trata `sigla_uf` como bloco único, somando as 24 dummies.
+**As três convergem.** Depois de controlar tudo o que se consegue medir, **a UF é o maior efeito
+do modelo** — embaralhá-la derruba o PR-AUC quase três vezes mais que a segunda colocada.
 
-### 12.1 O mesmo efeito em pontos percentuais
+Ceará (*odds ratio* de risco **0,19**) e Bahia (**6,96**) são vizinhos, da mesma região e com
+condições socioeconômicas próximas, em polos opostos. O Rio Grande do Sul aparece no extremo de
+risco (14,98) por um motivo conhecido: as enchentes de 2024.
 
-Odds ratio é a unidade estatisticamente correta e a errada para uma reunião. `notebooks/04`, §1
-traduz: **quantos pontos percentuais de risco** a variável move quando melhora em um
-desvio-padrão.
+### 8.1 Efeitos marginais, em pontos percentuais
 
 | Variável | Efeito no risco | Natureza |
 |---|---:|---|
-| `media_inse` | **−9,2 p.p.** | condição estrutural |
-| `ideb_2021` | **−7,5 p.p.** | condição estrutural |
-| `afd_ai_grupo_1` (formação adequada) | **−3,0 p.p.** | alavanca escolar |
-| `afd_ai_grupo_3` | **−2,1 p.p.** | alavanca escolar |
+| `media_portugues_2023` | **−6,1 p.p.** | condição herdada |
+| `ideb_2021` | **−5,5 p.p.** | condição herdada |
+| `media_inse` | **−5,3 p.p.** | condição herdada |
+| `taxa_2023` | −4,4 p.p. | condição herdada |
+| `afd_ai_grupo_1` (formação adequada) | **−2,4 p.p.** | **alavanca escolar** |
+| `afd_ai_grupo_3` | −1,7 p.p. | **alavanca escolar** |
 
-A separação entre **o que o município recebe** e **o que o município faz** é o que torna a tabela
-acionável: as alavancas sob gestão municipal valem cerca de um terço do que valem as condições
-herdadas — e a UF, que não aparece aqui por não ser contínua, vale mais que todas.
+A separação entre o que o município **recebe** e o que ele **faz** é o que torna a tabela
+acionável: as alavancas sob gestão municipal valem menos da metade das condições herdadas — e a
+UF, que não aparece por não ser contínua, vale mais que todas.
 
 ---
 
-## 13. Do escore à decisão: o limiar por cobertura
+## 9. Do escore à decisão: o limiar por cobertura
 
-O corte de 0,5 é o padrão do software, não uma decisão de política. Quem prioriza município
-define primeiro **quanta cobertura quer** — *"não quero deixar de fora mais de 20% dos municípios
-em risco"* — e o limiar sai daí (`src/evaluation/metricas.py::limiar_por_recall`).
-
-Sobre os 5.448 municípios do ciclo (`notebooks/04`, §2):
+O corte de 0,5 é convenção do software. Quem prioriza município define primeiro **quanta cobertura
+quer** — *"não quero perder mais de 20% dos municípios em risco"* — e o limiar sai daí
+(`evaluation.limiar_por_recall`). Sobre o conjunto de teste:
 
 | Cobertura desejada | Limiar | Municípios sinalizados | Precisão |
 |---:|---:|---:|---:|
-| 60% | — | 1.166 | 0,77 |
-| 70% | — | 1.460 | 0,71 |
-| **80%** | **0,286** | **1.861** | **0,64** |
-| 90% | — | 2.415 | 0,55 |
+| 60% | 0,542 | 285 | 0,77 |
+| 70% | 0,393 | 362 | 0,71 |
+| **80%** | **0,258** | **456** | **0,64** |
+| 90% | 0,146 | 596 | 0,55 |
 
-A tabela põe preço na decisão: cobrir mais custa precisão, e precisão menor significa mais
-visitas técnicas a quem não precisava. **É uma escolha de política, e o modelo apenas mostra o
-câmbio.**
+Cobrir mais custa precisão, e precisão menor significa mais visitas técnicas a quem não precisava.
+**É uma escolha de política, e o modelo apenas mostra o câmbio.**
 
-Adotando 80% de cobertura: **1.861 municípios prioritários**, com taxa média observada de 46,6%,
-contra 3.587 em acompanhamento, com 71,2%.
+Aplicado aos 5.396 municípios: **1.711 prioritários**, com taxa média observada de 44,7%, contra
+3.685 em acompanhamento, com 71,3%.
 
 ---
 
-## 14. Hipóteses e respostas às perguntas de negócio
+## 10. Hipóteses — veredito
 
-### 14.1 As cinco hipóteses da EDA
-
-Registradas **antes** de o modelo existir.
+Registradas na EDA **antes** de o modelo existir.
 
 | # | Hipótese | Veredito |
 |---|---|---|
-| H1 | Desempenho pregresso é o melhor preditor disponível | **Parcialmente** — `ideb_2021` (OR 0,42) é o segundo maior efeito contínuo, atrás do INSE |
-| H2 | Efeito socioeconômico é muito menor que a correlação bruta sugere | **Refutada em magnitude, confirmada no mecanismo** (ver abaixo) |
-| H3 | Qualificação docente tem efeito próprio | **Confirmada** — `afd_ai_grupo_1`, OR 0,76: mais docentes com formação adequada reduzem o risco |
-| H4 | Há efeito de gestão estadual não capturado pelas variáveis | **Fortemente confirmada** — `sigla_uf_CE` com OR **0,006**, e `sigla_uf` domina a permutation importance |
-| H5 | Municípios rurais e pequenos em desvantagem | **Parcialmente** — `capital_desc_interior` OR 1,23 confirma; `proporcao_rural` (OR 1,02) é praticamente nulo depois de controlar o resto |
+| H1 | O desempenho pregresso é o melhor preditor disponível | **Confirmada** — o bloco histórico sozinho atinge PR-AUC 0,811, contra 0,809 do modelo completo |
+| H2 | O efeito socioeconômico é menor do que a correlação bruta sugere | **Confirmada** — `media_inse` vale −5,3 p.p., atrás de duas variáveis de histórico |
+| H3 | A qualificação docente tem efeito próprio | **Confirmada, fraca** — `afd_ai_grupo_1`, −2,4 p.p. |
+| H4 | Há efeito de gestão estadual que as variáveis não capturam | **Fortemente confirmada** — `sigla_uf` domina a permutation importance com 0,211 |
+| H5 | Municípios rurais e pequenos em desvantagem | **Parcialmente** — `capital_desc_interior` confirma; `proporcao_rural` é quase nulo depois dos controles |
 
-**Sobre H2 — e é uma reversão em relação ao relatório da abordagem anterior.** Havíamos
-registrado a expectativa de que controlar por UF *encolheria* o efeito do INSE. Ele não só não
-encolheu como **passou a ser o maior efeito contínuo do modelo** (OR 0,391, à frente do IDEB).
+---
 
-A previsão errou porque comparava quantidades diferentes: a EDA mediu uma correlação
-**bivariada** (0,29), confundida com a região; o coeficiente do modelo é **parcial**, condicionado
-a UF e a mais trinta variáveis. Remover a variação *entre* regiões — que incluía o gradiente
-negativo do Nordeste — limpa o sinal em vez de reduzi-lo. É efeito de **supressão**.
+## 11. Respostas às perguntas de negócio
 
-O mecanismo da hipótese (Paradoxo de Simpson) segue confirmado, e a conclusão de política também:
-o nível socioeconômico pesa, mas **a UF pesa mais** — 2,5× o INSE na permutation importance. Não
-é a renda das famílias que separa os municípios brasileiros em primeiro lugar.
-
-### 14.2 As cinco perguntas do enunciado
-
-Todas respondidas pelo **mesmo classificador supervisionado** (`notebooks/04`). Não há um segundo
-modelo por trás de nenhuma delas — a versão anterior deste projeto usava K-means para a pergunta 3,
-e ele foi removido: o enunciado pede aprendizado supervisionado, e o próprio classificador
-responde melhor.
+Todas pelo **mesmo classificador supervisionado** (`notebooks/04`).
 
 | # | Pergunta | Resposta |
 |---|---|---|
-| 1 e 5 | Quais fatores mais impactam / têm maior influência? | **A unidade federativa** (queda de 0,345 no PR-AUC ao ser embaralhada), seguida da **condição socioeconômica** (0,137), do **desempenho pregresso** (0,103) e, uma ordem de grandeza abaixo, das **alavancas escolares** |
-| 2 | Quais municípios apresentam maior risco? | **A saída nativa do modelo.** `P(em risco)` por município, ordenável, em [`ranking_risco_municipios.csv`](ranking_risco_municipios.csv). O corte é a decisão de cobertura da §13 |
-| 3 | Quais regiões têm padrões semelhantes? | **Dois mecanismos e três patamares.** Norte (52,8%) e Nordeste (45,8%) compartilham patamar *e* motores (IDEB pregresso + INSE); Sul (22,0%), Sudeste (9,4%) e Centro-Oeste (7,9%) compartilham os motores (composição do INSE), com o Sul num patamar à parte |
-| 4 | Como prever quem não atingirá as metas? | **Risco previsto × meta pactuada.** 43,4% já cumpriram em 2024 a meta de 2025; dos restantes, **1.575** estão abaixo *sem* sinal de risco estrutural e **1.455** *com* sinal |
+| 1 e 5 | Fatores de maior impacto / influência | **UF** (0,211 na permutation importance), **desempenho pregresso** (−6,1 e −5,5 p.p.), **condição socioeconômica** (−5,3) e, por último, as **alavancas escolares** (−2,4) |
+| 2 | Municípios de maior risco | A saída nativa do modelo, em `ranking_risco_municipios.csv`. Com 80% de cobertura: **1.711 prioritários** |
+| 3 | Regiões com padrões semelhantes | **Norte (52,7%) e Nordeste (45,5%) formam um par** — mesmo patamar e mesmos motores. Sul (21,7%), Sudeste (9,5%) e Centro-Oeste (8,5%) ficam no patamar baixo, sem gargalo comum |
+| 4 | Quem não atingirá as metas | **2.314** já atingiram; **1.692** estão abaixo sem sinal de risco; **1.296** abaixo com sinal |
 
-### 14.3 As duas leituras que mudam a recomendação
+### 11.1 As duas leituras que mudam a recomendação
 
-**Pergunta 3 — os padrões atravessam as fronteiras.** Norte e Nordeste têm o mesmo problema no
-modelo, ainda que sejam regiões diferentes no mapa. E, descendo do agregado, há municípios de
-perfil "Norte/Nordeste" no interior do Sudeste e municípios de perfil "Sudeste" dentro do
-Nordeste. **Um programa desenhado por região erraria o alvo:** a focalização eficiente é por
-perfil de risco, e o ranking da pergunta 2 já entrega essa lista pronta, sem fronteira nenhuma.
+**Pergunta 3.** Onde o resultado é baixo (Norte e Nordeste), o gargalo é o mesmo: desempenho
+pregresso e nível socioeconômico. Onde já é alto, **não há obstáculo comum** — as restrições viram
+locais. E os perfis atravessam as fronteiras: há municípios de perfil nordestino no interior do
+Sudeste. **Focalizar por perfil, não por território.**
 
-**Pergunta 4 — "abaixo da meta" não é um diagnóstico.** Separar os municípios pelo sinal do
-modelo transforma um número em decisão de alocação:
-
-| Situação | Municípios | Diagnóstico | Resposta |
-|---|---:|---|---|
-| Meta já atingida | 2.322 | — | monitoramento |
-| Abaixo da meta, **sem** sinal de risco estrutural | 1.575 | as condições comportam a meta; falta execução | **apoio técnico**, retorno rápido |
-| Abaixo da meta, **com** sinal de risco | 1.455 | as condições não sustentam a meta | **investimento estruturante**, retorno em anos |
-
-Cobrar resultado do terceiro grupo sem mudar as condições é cobrar o impossível.
+**Pergunta 4.** "Abaixo da meta" não é diagnóstico. Separado pelo que o modelo prevê, vira decisão
+de alocação: quem está abaixo **sem** sinal de risco precisa de **apoio à execução**, com retorno
+rápido; quem está abaixo **com** sinal precisa de **investimento estruturante**. Cobrar resultado
+do segundo grupo sem mudar as condições é cobrar o impossível.
 
 ---
 
-## 15. Limitações
+## 12. Limitações
 
-1. **Falácia ecológica** — o modelo descreve o município, não uma criança. Duas crianças do mesmo
-   município recebem a mesma predição. É consequência direta da ausência de microdado de aluno
-   (§1.1), não uma escolha de modelagem.
-2. **Ausência de variáveis de política educacional** — a lacuna mais séria: o maior efeito do
-   modelo (a UF) é justamente o que ele **não consegue explicar**. Nada na base descreve
-   formação continuada, material estruturado, avaliação diagnóstica ou regime de colaboração.
-3. **Um único ciclo modelado** — não distingue tendência de choque, e o ciclo escolhido contém o
-   choque do Rio Grande do Sul: o risco previsto para o estado está **superestimado**.
-4. **Cobertura incompleta** — 25 das 27 UFs; DF sem rede municipal, Roraima ausente da fonte.
-5. **INSE de 2023 replicado para 2024** como atributo estrutural do município.
-6. **AFD/ATU/IED usam o agregado `Total`**, que inclui a rede privada — medem o contexto
-   educacional do município, não a rede municipal especificamente.
-7. **Não projeta ciclos futuros** — o modelo descreve a estrutura de 2024. Projetar 2025 exigiria
-   as características de 2025, que ainda não existem.
-8. **Associações condicionais, não efeitos causais.** Nenhuma intervenção pode ser justificada
-   apenas por estes coeficientes.
-9. **O ranking não avalia gestão.** Ele ordena municípios pelo risco que as condições observadas
-   produzem. Um município no topo pode ter gestão excelente enfrentando condições muito adversas.
+1. **Falácia ecológica** — o modelo descreve o município, não uma criança. Consequência direta da
+   ausência de microdado (§1.1), não escolha de modelagem.
+2. **Sem variáveis de política educacional** — o maior efeito do modelo (a UF) é o que ele não
+   consegue explicar.
+3. **Um único ciclo modelado**, e ele contém o choque do RS: o risco previsto para o estado é
+   pessimista demais.
+4. **Cobertura incompleta** — 25 das 27 UFs; 5.396 dos 5.448 municípios do ciclo.
+5. **INSE de 2023 replicado para 2024**; AFD/ATU/IED usam o agregado `Total`, que inclui a rede
+   privada.
+6. **Não projeta ciclos futuros** — descreve a estrutura de 2024.
+7. **Associação, não causalidade.**
+8. **A lista não avalia gestão** — ordena municípios pelas condições observadas.
 
 ---
 
-## 16. Decisões revistas durante o projeto
+## 13. Decisões revistas durante o projeto
 
-Registradas porque o processo importa tanto quanto o resultado — e porque cada uma foi corrigida
-por uma verificação, não por opinião.
+Cada uma foi corrigida por uma verificação, não por opinião.
 
 | Afirmação inicial | O que a verificação mostrou |
 |---|---|
-| "As proporções por nível somam exatamente para a taxa" | **Não somam** — o corte de 743 pontos cai *dentro* de um nível. A melhor aproximação é a soma dos níveis 5–8 (r = 0,986, erro médio 5,9 p.p.). Continua vazamento severo, por proximidade da medição e não por identidade |
-| "Controlada a região, a relação INSE × taxa é crescente em todas" | **Falso.** Com decis intrarregionais: fraca no Sudeste (0,01) e no Sul (0,04), **negativa** no Nordeste (−0,14). A narrativa correta — confundimento geográfico — é mais forte que a errada |
-| "Controlar por UF encolherá o efeito do INSE" | **Cresceu** — o INSE passou a ser o maior efeito contínuo do modelo. Efeito de supressão; ver §14.1 |
-| "`meta_alfabetizacao_2030` é 100 para todo município" | É **80** para toda a rede municipal |
-| "Cobertura idêntica nos dois ciclos" | O *número* de municípios é idêntico (5.448), o *conjunto* não: 5.500 distintos, 5.396 nos dois, 104 entram ou saem |
+| "As proporções por nível somam exatamente para a taxa" | **Não somam** — o corte de 743 cai *dentro* de um nível; erro médio de 5,9 p.p. Continua vazamento severo, por proximidade da medição e não por identidade |
+| "Controlada a região, a relação INSE × taxa é crescente em todas" | **Falso.** Fraca no Sudeste (0,01) e no Sul (0,04), **negativa** no Nordeste (−0,14) |
+| "`meta_alfabetizacao_2030` é 100 para todo município" | É **80** |
+| "Cobertura idêntica nos dois ciclos" | O *número* é idêntico (5.448), o *conjunto* não: 5.500 distintos, 5.396 nos dois |
 | "~850 mil registros no Bronze" | **719.757** |
-| "O IDEB pregresso é o maior efeito contínuo" | É o **INSE** (−9,2 p.p. contra −7,5). O IDEB liderava na formulação anterior do alvo, não nesta |
-| "O Sul tem motores de risco próprios" | Sul, Sudeste e Centro-Oeste compartilham os motores; o que separa o Sul é o **patamar** |
-| "`class_weight='balanced'` é necessário com classe minoritária" | Não altera o ROC-AUC e **piora a calibração em 2,5×**; ver §10.1 |
+| "`media_portugues` deve ser excluída em qualquer forma" | Só a **contemporânea**. Defasada, virou a variável contínua mais importante do modelo — a distinção reorganizou o projeto |
+| "A primeira divisão da árvore é a taxa de 2023" | É a **nota de Português de 2023**; e o segundo nível já usa dummies de UF |
+| "`GridSearchCV` não funciona com alvo ponderado" | **Funciona** — bastava declarar `set_fit_request` em cada etapa aninhada. O obstáculo era falta de configuração, não limitação da biblioteca |
 
-### 16.1 A mudança de abordagem, e o que ela custou
+### 13.1 As formulações que ficaram pelo caminho
 
-O projeto passou por duas formulações do alvo. A primeira mantinha o grão de aluno via **dado
-binário agrupado** (cada município virava duas observações ponderadas); a segunda, adotada,
-classifica o **município**. A troca simplificou a interpretação, devolveu o ferramental padrão do
-Scikit-learn e fez a saída do modelo responder diretamente à pergunta 2 do enunciado.
+O projeto testou três formulações do alvo antes de fixar esta:
 
-**O que se perdeu merece registro.** A formulação anterior permitia um **teste de estabilidade do
-ranking** entre os dois ciclos: a lista dos 300 municípios com pior resíduo em 2023 tinha apenas
-**17,3% de sobreposição** com a de 2024. Era o achado metodológico mais forte do projeto — a
-prova de que uma lista de "pior gestão" mediria ruído — e **não sobrevive ao recorte de um ciclo
-só**. A cautela que ele fundamentava permanece como limitação declarada (§15, item 9), agora
-apoiada em argumento e não em número.
+| Versão | Alvo | Resultado | Por que saiu |
+|---|---|---|---|
+| v1 | criança via dado binário agrupado, 2 ciclos, sem histórico | AUC 0,661 (67,9% do teto do oráculo) | o split temporal impedia usar o histórico defasado, que é o preditor mais forte |
+| v2 | município, sem histórico | ROC-AUC 0,880 | descartava informação legítima |
+| v3 | criança via dado binário agrupado, com histórico | AUC 0,687 (79,1% do teto) | exigia metadata routing e excluía SVM e KNN, que não aceitam `sample_weight` |
+| **v4 (atual)** | **município, com histórico** | **ROC-AUC 0,898 no teste** | — |
+
+O que se perdeu na v3 → v4 foi o **teto do oráculo** (0,737), que dava uma referência absoluta ao
+AUC. Em troca, todos os algoritmos das aulas couberam na comparação e o notebook passou a seguir a
+estrutura da aula de classificação supervisionada sem adaptações.
 
 ---
 
-## 17. Reprodutibilidade
+## 14. Reprodutibilidade
 
 ```bash
 python -m venv .venv
 .venv/Scripts/pip install -r requirements.txt
 
-python -m src.preprocessing.run_pipeline   # reconstrói o lake (Bronze → Silver → Gold)
-python -m src.modeling.model_card           # regenera reports/model_card.json
+python -m src.preprocessing.run_pipeline   # reconstrói o lake
+python -m src.modeling.model_card          # regenera reports/model_card.json
 # notebooks: 01 → 02 → 03 → 04
 ```
 
-- `random_state = 42` em toda parte; `src/preprocessing/config.py` centraliza caminhos, mapas de
-  domínio e a lista de vazamento.
-- A pipeline é **idempotente** — verificada por hash de conteúdo por partição.
-- Nenhuma etapa exige credenciais, nuvem ou acesso à internet.
-- `reports/model_card.json` registra a proveniência e as métricas de cada execução.
+`random_state = 42` em toda parte; `src/preprocessing/config.py` centraliza caminhos, mapas de
+domínio e a lista de vazamento. A pipeline é **idempotente**, verificada por hash de conteúdo por
+partição, e nenhuma etapa exige credenciais, nuvem ou internet.

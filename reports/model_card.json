@@ -1,30 +1,33 @@
 {
   "modelo": "Regressão Logística (L2) — classificação binária de risco municipal",
-  "gerado_em": "2026-09-09T00:07:33+00:00",
-  "premissa": "não existe microdado público por aluno: nenhuma das fontes ingeridas traz identificador de estudante. A chance de a criança ser alfabetizada é tratada como dada pelo contexto socioeconômico e educacional do município em que ela estuda, e é esse contexto que o modelo descreve",
+  "gerado_em": "2026-09-09T13:26:11+00:00",
+  "premissa": "não existe microdado público por aluno: nenhuma fonte traz identificador de estudante. Modelamos o contexto que responde pela criança — o município entra como em risco quando menos da metade das suas crianças chega alfabetizada ao fim do 2º ano",
   "dados": {
     "origem": "camada Gold local — data/lake/gold/base_ml_alfabetizacao",
-    "linhas_no_ciclo_modelado": 5448,
-    "municipios": 5448,
-    "unidades_da_federacao": 25,
-    "ano_modelado": 2024,
-    "anos_disponiveis_na_base": [
-      2023,
-      2024
-    ],
+    "ano_alvo": 2024,
+    "ano_historico": 2023,
+    "municipios": 5396,
+    "unidades_da_federacao": 24,
     "rede": "municipal (código 3)",
     "cobertura_declarada": "25 das 27 UFs — o Distrito Federal não tem rede municipal e Roraima está ausente do arquivo do INEP"
   },
   "alvo": {
     "definicao": "em_risco = taxa_alfabetizacao < 50%",
-    "justificativa_do_corte": "o município onde menos da metade das crianças chega alfabetizada. Descartadas: a meta pactuada (deriva da taxa de 2023 do próprio município, logo circular) e a média nacional (relativa — metade do país estaria em risco melhorasse ou não)",
-    "municipios_em_risco": 1486,
-    "prevalencia_pct": 27.28
+    "justificativa_do_corte": "corte absoluto e interpretável sem contexto estatístico. Descartadas: a meta pactuada (deriva da taxa de 2023 do próprio município, logo circular) e a média nacional (relativa — metade do país estaria em risco por construção)",
+    "municipios_em_risco": 1464,
+    "prevalencia_pct": 27.13,
+    "acuracia_do_baseline_pct": 72.87
   },
   "features": {
-    "colunas_de_entrada": 28,
-    "features_apos_preprocessamento": 53,
-    "blocos": {
+    "colunas_de_entrada": 30,
+    "features_apos_preprocessamento": 54,
+    "historico": [
+      "taxa_2023",
+      "media_portugues_2023",
+      "ideb_2021",
+      "taxa_aprovacao_2021"
+    ],
+    "atualidade": {
       "formacao_docente_afd": [
         "afd_ai_grupo_1",
         "afd_ai_grupo_2",
@@ -58,35 +61,46 @@
         "media_inse",
         "qtd_alunos_inse",
         "proporcao_rural"
-      ],
-      "ideb_defasado_2021": [
-        "ideb_2021",
-        "taxa_aprovacao_2021"
-      ],
-      "categoricas": [
-        "sigla_uf",
-        "capital_desc"
       ]
     },
+    "categoricas": [
+      "sigla_uf",
+      "capital_desc"
+    ],
     "categorias_de_referencia_descartadas": {
       "afd_ai_grupo_5": "docentes sem curso superior",
       "ied_ai_nivel_1": "menor nível de esforço docente",
       "inse_pc_nivel_1": "nível socioeconômico mais baixo"
     },
     "excluidas_com_motivo": {
-      "id_municipio": "identificador; entra como grupo do GroupKFold, não como preditor",
-      "taxa_alfabetizacao": "é o alvo",
-      "regiao": "função determinística de sigla_uf — as dummies de UF já a codificam",
-      "ano": "o split temporal treina em 2023 e testa em 2024; um coeficiente de ano estimado só com 2023 não se aplica a 2024. O efeito de ciclo fica fora do escopo: o modelo descreve a estrutura municipal, não a tendência nacional",
+      "id_municipio": "identificador; serve para separar municípios na validação",
+      "taxa_alfabetizacao": "é o alvo (do ciclo de 2024)",
+      "regiao": "função determinística de sigla_uf — as dummies já a codificam",
+      "ano": "constante: a modelagem usa um único ciclo",
       "nota_portugues_2021": "correlaciona 0,956 com ideb_2021 — redundante",
       "nota_matematica_2021": "correlaciona 0,961 com ideb_2021 — redundante",
       "indicador_rendimento_2021": "correlaciona 0,996 com taxa_aprovacao_2021 — redundante",
       "afd_ai_grupo_5": "categoria de referência do bloco composicional (docentes sem curso superior)",
       "ied_ai_nivel_1": "categoria de referência do bloco composicional (menor nível de esforço docente)",
       "inse_pc_nivel_1": "categoria de referência do bloco composicional (nível socioeconômico mais baixo)"
+    },
+    "contribuicao_por_bloco": {
+      "so_historico": {
+        "roc_auc": 0.9128,
+        "pr_auc": 0.8109
+      },
+      "so_atualidade": {
+        "roc_auc": 0.8887,
+        "pr_auc": 0.7587
+      },
+      "historico_e_atualidade": {
+        "roc_auc": 0.9146,
+        "pr_auc": 0.8093
+      }
     }
   },
   "tratamento_de_vazamento": {
+    "criterio": "a informação estaria disponível no momento da predição? Vazamento é contemporâneo, não histórico — media_portugues de 2024 sai, a de 2023 fica",
     "colunas_mapeadas": 23,
     "aplicado_em": "src/preprocessing/gold.py — montar_base_ml()",
     "colunas": [
@@ -116,160 +130,208 @@
     ]
   },
   "hiperparametros": {
-    "C": 10.0,
+    "C": 1.0,
     "grade_testada": [
-      0.01,
-      0.1,
-      1.0,
-      10.0,
-      100.0
+      {
+        "C": 0.01,
+        "pr_auc_validacao": 0.7664,
+        "pr_auc_treino": 0.7743,
+        "gap": 0.0079
+      },
+      {
+        "C": 0.1,
+        "pr_auc_validacao": 0.8065,
+        "pr_auc_treino": 0.8224,
+        "gap": 0.0159
+      },
+      {
+        "C": 1.0,
+        "pr_auc_validacao": 0.8093,
+        "pr_auc_treino": 0.8294,
+        "gap": 0.0201
+      },
+      {
+        "C": 10.0,
+        "pr_auc_validacao": 0.8074,
+        "pr_auc_treino": 0.8301,
+        "gap": 0.0227
+      },
+      {
+        "C": 100.0,
+        "pr_auc_validacao": 0.8067,
+        "pr_auc_treino": 0.8302,
+        "gap": 0.0236
+      }
     ],
     "criterio_da_busca": "average_precision (PR-AUC)",
-    "pr_auc_da_melhor_configuracao": 0.7857,
+    "pr_auc_da_melhor_configuracao": 0.8093,
     "penalidade": "L2 (padrão do LogisticRegression)",
     "solver": "lbfgs",
     "max_iter": 2000,
-    "random_state": 42,
-    "class_weight": "não usado — testado e rejeitado: 'balanced' não altera o ROC-AUC e piora a calibração. O desbalanceamento é tratado na escolha do limiar"
+    "random_state": 42
   },
   "validacao": {
     "particao": "train_test_split estratificado 75/25",
     "selecao_e_ajuste": "StratifiedKFold de 5 folds sobre o treino",
-    "observacao": "modelagem restrita ao ciclo de 2024, uma linha por município — o Rio Grande do Sul caiu 20,2 p.p. nesse ciclo por choque exógeno (enchentes de 2024) que nenhuma variável da base descreve, de modo que o risco previsto para o estado está superestimado"
+    "municipios_treino": 4047,
+    "municipios_teste": 1349,
+    "observacao": "o ciclo modelado contém o choque das enchentes de 2024 no Rio Grande do Sul; o risco previsto para o estado está superestimado"
   },
   "metricas": {
     "no_teste": {
-      "recall_risco": 0.5768,
-      "precisao_risco": 0.6794,
-      "f1_risco": 0.6239,
-      "acuracia": 0.8106,
-      "roc_auc": 0.8796,
-      "pr_auc": 0.6928,
-      "acuracia_baseline": 0.7276
+      "recall_risco": 0.623,
+      "precisao_risco": 0.7575,
+      "f1_risco": 0.6837,
+      "acuracia": 0.8436,
+      "roc_auc": 0.8978,
+      "pr_auc": 0.7535,
+      "acuracia_baseline": 0.7287
     },
     "limiar_por_cobertura": {
       "recall_60pct": {
         "recall_desejado": 0.6,
-        "limiar": 0.4741,
-        "municipios_sinalizados": 330,
+        "limiar": 0.5424,
+        "municipios_sinalizados": 285,
         "recall_risco": 0.6011,
-        "precisao_risco": 0.6758,
-        "f1_risco": 0.6362,
-        "acuracia": 0.8128,
-        "roc_auc": 0.8796,
-        "pr_auc": 0.6928,
-        "acuracia_baseline": 0.7276
+        "precisao_risco": 0.7719,
+        "f1_risco": 0.6759,
+        "acuracia": 0.8436,
+        "roc_auc": 0.8978,
+        "pr_auc": 0.7535,
+        "acuracia_baseline": 0.7287
       },
       "recall_70pct": {
         "recall_desejado": 0.7,
-        "limiar": 0.339,
-        "municipios_sinalizados": 422,
-        "recall_risco": 0.7008,
-        "precisao_risco": 0.6161,
-        "f1_risco": 0.6557,
-        "acuracia": 0.7996,
-        "roc_auc": 0.8796,
-        "pr_auc": 0.6928,
-        "acuracia_baseline": 0.7276
+        "limiar": 0.3933,
+        "municipios_sinalizados": 362,
+        "recall_risco": 0.7022,
+        "precisao_risco": 0.7099,
+        "f1_risco": 0.706,
+        "acuracia": 0.8414,
+        "roc_auc": 0.8978,
+        "pr_auc": 0.7535,
+        "acuracia_baseline": 0.7287
       },
       "recall_80pct": {
         "recall_desejado": 0.8,
-        "limiar": 0.237,
-        "municipios_sinalizados": 503,
+        "limiar": 0.2581,
+        "municipios_sinalizados": 456,
         "recall_risco": 0.8005,
-        "precisao_risco": 0.5905,
-        "f1_risco": 0.6796,
-        "acuracia": 0.7944,
-        "roc_auc": 0.8796,
-        "pr_auc": 0.6928,
-        "acuracia_baseline": 0.7276
+        "precisao_risco": 0.6425,
+        "f1_risco": 0.7129,
+        "acuracia": 0.8251,
+        "roc_auc": 0.8978,
+        "pr_auc": 0.7535,
+        "acuracia_baseline": 0.7287
       },
       "recall_90pct": {
         "recall_desejado": 0.9,
-        "limiar": 0.1459,
-        "municipios_sinalizados": 634,
-        "recall_risco": 0.9003,
-        "precisao_risco": 0.5268,
-        "f1_risco": 0.6647,
-        "acuracia": 0.7526,
-        "roc_auc": 0.8796,
-        "pr_auc": 0.6928,
-        "acuracia_baseline": 0.7276
+        "limiar": 0.1464,
+        "municipios_sinalizados": 596,
+        "recall_risco": 0.9016,
+        "precisao_risco": 0.5537,
+        "f1_risco": 0.6861,
+        "acuracia": 0.7761,
+        "roc_auc": 0.8978,
+        "pr_auc": 0.7535,
+        "acuracia_baseline": 0.7287
       }
     }
   },
   "comparacao_de_algoritmos": [
     {
       "modelo": "Gradient Boosting",
-      "roc_auc": 0.8974,
-      "roc_auc_desvio": 0.0087,
-      "pr_auc": 0.7964,
-      "gap_treino_validacao": 0.0623,
+      "roc_auc": 0.9117,
+      "pr_auc": 0.8129,
+      "recall_risco": 0.6639,
+      "precisao_risco": 0.7646,
+      "acuracia": 0.8527,
+      "gap_treino_validacao": 0.0607,
       "segundos": 1.6
     },
     {
-      "modelo": "Regressão Logística",
-      "roc_auc": 0.9027,
-      "roc_auc_desvio": 0.0055,
-      "pr_auc": 0.7853,
-      "gap_treino_validacao": 0.007,
-      "segundos": 0.9
-    },
-    {
       "modelo": "Random Forest",
-      "roc_auc": 0.8859,
-      "roc_auc_desvio": 0.0072,
-      "pr_auc": 0.7817,
-      "gap_treino_validacao": 0.0745,
+      "roc_auc": 0.9096,
+      "pr_auc": 0.8095,
+      "recall_risco": 0.5847,
+      "precisao_risco": 0.795,
+      "acuracia": 0.8461,
+      "gap_treino_validacao": 0.0587,
       "segundos": 0.7
     },
     {
-      "modelo": "SVM (RBF)",
-      "roc_auc": 0.8873,
-      "roc_auc_desvio": 0.0088,
-      "pr_auc": 0.7772,
-      "gap_treino_validacao": 0.0613,
-      "segundos": 1.4
+      "modelo": "Regressão Logística",
+      "roc_auc": 0.9146,
+      "pr_auc": 0.8093,
+      "recall_risco": 0.6657,
+      "precisao_risco": 0.7629,
+      "acuracia": 0.8525,
+      "gap_treino_validacao": 0.0084,
+      "segundos": 0.8
     },
     {
-      "modelo": "KNN",
-      "roc_auc": 0.8433,
-      "roc_auc_desvio": 0.0072,
-      "pr_auc": 0.6938,
-      "gap_treino_validacao": 0.1567,
-      "segundos": 1.1
+      "modelo": "SVM (RBF)",
+      "roc_auc": 0.901,
+      "pr_auc": 0.7991,
+      "recall_risco": 0.6038,
+      "precisao_risco": 0.81,
+      "acuracia": 0.854,
+      "gap_treino_validacao": 0.0536,
+      "segundos": 2.4
     },
     {
       "modelo": "Árvore de Decisão",
-      "roc_auc": 0.845,
-      "roc_auc_desvio": 0.0076,
-      "pr_auc": 0.6889,
-      "gap_treino_validacao": 0.0256,
-      "segundos": 0.1
+      "roc_auc": 0.8791,
+      "pr_auc": 0.741,
+      "recall_risco": 0.5946,
+      "precisao_risco": 0.73,
+      "acuracia": 0.8285,
+      "gap_treino_validacao": 0.0388,
+      "segundos": 0.8
     },
     {
       "modelo": "Naive Bayes",
-      "roc_auc": 0.8575,
-      "roc_auc_desvio": 0.0061,
-      "pr_auc": 0.6602,
-      "gap_treino_validacao": 0.006,
-      "segundos": 0.8
+      "roc_auc": 0.8656,
+      "pr_auc": 0.6739,
+      "recall_risco": 0.9262,
+      "precisao_risco": 0.4471,
+      "acuracia": 0.6659,
+      "gap_treino_validacao": 0.0062,
+      "segundos": 0.1
     },
     {
       "modelo": "Baseline (classe majoritária)",
       "roc_auc": 0.5,
-      "roc_auc_desvio": 0.0,
-      "pr_auc": 0.2729,
+      "pr_auc": 0.2713,
+      "recall_risco": 0.0,
+      "precisao_risco": 0.0,
+      "acuracia": 0.7287,
       "gap_treino_validacao": 0.0,
-      "segundos": 3.5
+      "segundos": 3.2
     }
   ],
+  "interpretabilidade": {
+    "maiores_coeficientes": {
+      "sigla_uf_RS": 2.7066,
+      "sigla_uf_GO": -2.0675,
+      "sigla_uf_BA": 1.9407,
+      "sigla_uf_CE": -1.6415,
+      "sigla_uf_PE": -1.5109,
+      "sigla_uf_MG": -1.4568,
+      "sigla_uf_ES": -1.4529,
+      "sigla_uf_MA": -1.3277,
+      "sigla_uf_RN": 0.9202,
+      "sigla_uf_SP": 0.8478,
+      "sigla_uf_SE": 0.8282,
+      "sigla_uf_RO": -0.8002
+    }
+  },
   "limitacoes": [
-    "falácia ecológica — descreve o município, não uma criança: dois alunos do mesmo município recebem a mesma predição",
+    "falácia ecológica — descreve o município, não uma criança: duas crianças do mesmo município recebem a mesma predição",
     "sem variáveis de política educacional — o maior efeito do modelo (a UF) fica sem explicação dentro da base",
+    "um único ciclo modelado, e ele contém o choque do Rio Grande do Sul",
     "INSE de 2023 replicado para 2024 como atributo estrutural",
     "AFD/ATU/IED usam o agregado Total, que inclui a rede privada",
-    "um único ciclo modelado — não distingue tendência de choque, e o ciclo escolhido contém o choque do Rio Grande do Sul",
     "associações condicionais, não efeitos causais"
   ],
   "reprodutibilidade": {
