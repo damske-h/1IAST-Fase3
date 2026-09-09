@@ -1,0 +1,5 @@
+modelo,roc_auc_val,roc_auc_desvio,pr_auc_val,f1_val,roc_auc_treino,gap_roc_auc
+Random Forest,0.99603,0.003807,0.991878,0.97943,0.999377,0.003346
+Gradient Boosting,0.99448,0.004637,0.981428,0.980098,0.999904,0.005425
+Regressão Logística,0.974028,0.005273,0.916295,0.795656,0.976783,0.002755
+Baseline (classe majoritária),0.5,0.0,0.181252,0.0,0.5,0.0
