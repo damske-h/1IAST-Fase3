@@ -1,6 +1,7 @@
 """Pipeline Scikit-learn com as mesmas variáveis do projeto de referência."""
 
 from sklearn.compose import ColumnTransformer
+from sklearn.dummy import DummyClassifier
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
@@ -41,9 +42,14 @@ def construir_pipeline(estimador=None) -> Pipeline:
     ])
 
 
-def modelos_candidatos() -> dict:
-    """Três candidatos suficientes para comparar modelo linear e ensembles."""
-    return {
+def modelos_candidatos(com_baseline: bool = False) -> dict:
+    """Um modelo linear e dois ensembles, opcionalmente com o baseline.
+
+    O baseline prevê sempre a classe majoritária: ele não é um concorrente, é a
+    régua que torna a acurácia legível. Fica fora por padrão para não poluir a
+    comparação entre algoritmos de fato.
+    """
+    candidatos = {
         "Regressão Logística": LogisticRegression(
             class_weight="balanced", max_iter=2000, random_state=42
         ),
@@ -53,6 +59,11 @@ def modelos_candidatos() -> dict:
         ),
         "Gradient Boosting": GradientBoostingClassifier(random_state=42),
     }
+    if com_baseline:
+        candidatos["Baseline (classe majoritária)"] = DummyClassifier(
+            strategy="most_frequent"
+        )
+    return candidatos
 
 
 def nomes_das_features(pipeline: Pipeline) -> list[str]:

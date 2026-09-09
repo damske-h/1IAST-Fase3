@@ -1,6 +1,7 @@
 {
   "unidade_analise": "municipio-ano-rede municipal",
   "alvo": "proxy: atingiu a meta municipal de 2025",
+  "classe_positiva": "atingiu a meta (risco = 1 - probabilidade)",
   "features": [
     "media_portugues",
     "meta_2025",
@@ -9,24 +10,352 @@
     "sigla_uf",
     "regiao"
   ],
+  "semente": 42,
   "treino": {
     "ano": 2023,
-    "n": 5302
+    "n": 5302,
+    "prevalencia": 0.1813
   },
   "teste": {
     "ano": 2024,
-    "n": 5352
+    "n": 5352,
+    "prevalencia": 0.4339
   },
   "melhores_parametros": {
     "modelo__C": 1.0
   },
+  "otimizacao": {
+    "metrica": "f1",
+    "grade_C": [
+      0.01,
+      0.1,
+      1.0,
+      10.0
+    ],
+    "resultados": [
+      {
+        "param_modelo__C": 0.01,
+        "mean_train_score": 0.761,
+        "mean_test_score": 0.7617,
+        "std_test_score": 0.0172,
+        "gap": -0.0007
+      },
+      {
+        "param_modelo__C": 0.1,
+        "mean_train_score": 0.7921,
+        "mean_test_score": 0.7889,
+        "std_test_score": 0.0128,
+        "gap": 0.0031
+      },
+      {
+        "param_modelo__C": 1.0,
+        "mean_train_score": 0.7995,
+        "mean_test_score": 0.7957,
+        "std_test_score": 0.0076,
+        "gap": 0.0038
+      },
+      {
+        "param_modelo__C": 10.0,
+        "mean_train_score": 0.7989,
+        "mean_test_score": 0.7956,
+        "std_test_score": 0.0088,
+        "gap": 0.0033
+      }
+    ]
+  },
+  "selecao_por_cv_2023": [
+    {
+      "modelo": "Random Forest",
+      "roc_auc_val": 0.996,
+      "roc_auc_desvio": 0.0038,
+      "pr_auc_val": 0.9919,
+      "f1_val": 0.9794,
+      "roc_auc_treino": 0.9994,
+      "gap_roc_auc": 0.0033
+    },
+    {
+      "modelo": "Gradient Boosting",
+      "roc_auc_val": 0.9945,
+      "roc_auc_desvio": 0.0046,
+      "pr_auc_val": 0.9814,
+      "f1_val": 0.9801,
+      "roc_auc_treino": 0.9999,
+      "gap_roc_auc": 0.0054
+    },
+    {
+      "modelo": "Regressão Logística",
+      "roc_auc_val": 0.974,
+      "roc_auc_desvio": 0.0053,
+      "pr_auc_val": 0.9163,
+      "f1_val": 0.7957,
+      "roc_auc_treino": 0.9768,
+      "gap_roc_auc": 0.0028
+    },
+    {
+      "modelo": "Baseline (classe majoritária)",
+      "roc_auc_val": 0.5,
+      "roc_auc_desvio": 0.0,
+      "pr_auc_val": 0.1813,
+      "f1_val": 0.0,
+      "roc_auc_treino": 0.5,
+      "gap_roc_auc": 0.0
+    }
+  ],
+  "comparacao_no_holdout_2024": [
+    {
+      "modelo": "Regressão Logística",
+      "acuracia": 0.7173,
+      "precisao": 0.8081,
+      "recall": 0.4569,
+      "f1": 0.5838,
+      "roc_auc": 0.8191,
+      "pr_auc": 0.7878,
+      "acuracia_baseline": 0.5661
+    },
+    {
+      "modelo": "Gradient Boosting",
+      "acuracia": 0.6504,
+      "precisao": 0.7196,
+      "recall": 0.3183,
+      "f1": 0.4413,
+      "roc_auc": 0.8155,
+      "pr_auc": 0.7338,
+      "acuracia_baseline": 0.5661
+    },
+    {
+      "modelo": "Random Forest",
+      "acuracia": 0.5863,
+      "precisao": 0.5573,
+      "recall": 0.2261,
+      "f1": 0.3217,
+      "roc_auc": 0.7105,
+      "pr_auc": 0.6132,
+      "acuracia_baseline": 0.5661
+    },
+    {
+      "modelo": "Baseline (classe majoritária)",
+      "acuracia": 0.5661,
+      "precisao": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "roc_auc": 0.5,
+      "pr_auc": 0.4339,
+      "acuracia_baseline": 0.5661
+    }
+  ],
+  "generalizacao_temporal": [
+    {
+      "modelo": "Random Forest",
+      "roc_auc_cv_2023": 0.996,
+      "roc_auc_holdout_2024": 0.7105,
+      "queda": 0.2855
+    },
+    {
+      "modelo": "Gradient Boosting",
+      "roc_auc_cv_2023": 0.9945,
+      "roc_auc_holdout_2024": 0.8155,
+      "queda": 0.179
+    },
+    {
+      "modelo": "Regressão Logística",
+      "roc_auc_cv_2023": 0.974,
+      "roc_auc_holdout_2024": 0.8191,
+      "queda": 0.1549
+    },
+    {
+      "modelo": "Baseline (classe majoritária)",
+      "roc_auc_cv_2023": 0.5,
+      "roc_auc_holdout_2024": 0.5,
+      "queda": 0.0
+    }
+  ],
   "metricas_holdout": {
     "acuracia": 0.7173,
     "precisao": 0.8081,
     "recall": 0.4569,
     "f1": 0.5838,
     "roc_auc": 0.8191,
-    "pr_auc": 0.7878
+    "pr_auc": 0.7878,
+    "acuracia_baseline": 0.5661
+  },
+  "desvio_de_calibracao": 0.1925,
+  "limiares_de_cobertura": [
+    {
+      "recall_desejado": 0.6,
+      "limiar": 0.1939,
+      "municipios_sinalizados": 1898,
+      "acuracia": 0.7324,
+      "precisao": 0.7345,
+      "recall": 0.6003,
+      "f1": 0.6607,
+      "roc_auc": 0.8191,
+      "pr_auc": 0.7878,
+      "acuracia_baseline": 0.5661
+    },
+    {
+      "recall_desejado": 0.7,
+      "limiar": 0.0747,
+      "municipios_sinalizados": 2344,
+      "acuracia": 0.7358,
+      "precisao": 0.6937,
+      "recall": 0.7003,
+      "f1": 0.697,
+      "roc_auc": 0.8191,
+      "pr_auc": 0.7878,
+      "acuracia_baseline": 0.5661
+    },
+    {
+      "recall_desejado": 0.8,
+      "limiar": 0.0251,
+      "municipios_sinalizados": 2870,
+      "acuracia": 0.7242,
+      "precisao": 0.6474,
+      "recall": 0.8002,
+      "f1": 0.7157,
+      "roc_auc": 0.8191,
+      "pr_auc": 0.7878,
+      "acuracia_baseline": 0.5661
+    },
+    {
+      "recall_desejado": 0.9,
+      "limiar": 0.0059,
+      "municipios_sinalizados": 3561,
+      "acuracia": 0.6818,
+      "precisao": 0.5869,
+      "recall": 0.9001,
+      "f1": 0.7105,
+      "roc_auc": 0.8191,
+      "pr_auc": 0.7878,
+      "acuracia_baseline": 0.5661
+    }
+  ],
+  "interpretabilidade": {
+    "coeficientes_top10": [
+      {
+        "variavel": "media_portugues",
+        "coeficiente": 5.4157,
+        "importancia": 5.4157
+      },
+      {
+        "variavel": "sigla_uf_RN",
+        "coeficiente": 2.5704,
+        "importancia": 2.5704
+      },
+      {
+        "variavel": "sigla_uf_PA",
+        "coeficiente": 2.161,
+        "importancia": 2.161
+      },
+      {
+        "variavel": "sigla_uf_GO",
+        "coeficiente": 1.9697,
+        "importancia": 1.9697
+      },
+      {
+        "variavel": "sigla_uf_MS",
+        "coeficiente": -1.7955,
+        "importancia": 1.7955
+      },
+      {
+        "variavel": "regiao_Sul",
+        "coeficiente": 1.6588,
+        "importancia": 1.6588
+      },
+      {
+        "variavel": "sigla_uf_TO",
+        "coeficiente": -1.6392,
+        "importancia": 1.6392
+      },
+      {
+        "variavel": "sigla_uf_AM",
+        "coeficiente": 1.4485,
+        "importancia": 1.4485
+      },
+      {
+        "variavel": "sigla_uf_RO",
+        "coeficiente": -1.3787,
+        "importancia": 1.3787
+      },
+      {
+        "variavel": "sigla_uf_ES",
+        "coeficiente": 1.2916,
+        "importancia": 1.2916
+      }
+    ],
+    "permutation_importance": [
+      {
+        "variavel": "media_portugues",
+        "queda_roc_auc": 0.3815,
+        "desvio": 0.007
+      },
+      {
+        "variavel": "meta_2025",
+        "queda_roc_auc": 0.0059,
+        "desvio": 0.0001
+      },
+      {
+        "variavel": "meta_uf_2025",
+        "queda_roc_auc": -0.0016,
+        "desvio": 0.0008
+      },
+      {
+        "variavel": "taxa_media_uf_loo",
+        "queda_roc_auc": -0.0063,
+        "desvio": 0.0017
+      },
+      {
+        "variavel": "sigla_uf",
+        "queda_roc_auc": -0.0133,
+        "desvio": 0.0014
+      },
+      {
+        "variavel": "regiao",
+        "queda_roc_auc": -0.0276,
+        "desvio": 0.0013
+      }
+    ],
+    "shap_top10": [
+      {
+        "variavel": "media_portugues",
+        "shap_medio_abs": 3.7994
+      },
+      {
+        "variavel": "taxa_media_uf_loo",
+        "shap_medio_abs": 0.8112
+      },
+      {
+        "variavel": "regiao_Sul",
+        "shap_medio_abs": 0.535
+      },
+      {
+        "variavel": "meta_uf_2025",
+        "shap_medio_abs": 0.3565
+      },
+      {
+        "variavel": "regiao_Nordeste",
+        "shap_medio_abs": 0.3129
+      },
+      {
+        "variavel": "sigla_uf_RN",
+        "shap_medio_abs": 0.218
+      },
+      {
+        "variavel": "regiao_Sudeste",
+        "shap_medio_abs": 0.1952
+      },
+      {
+        "variavel": "sigla_uf_SP",
+        "shap_medio_abs": 0.1675
+      },
+      {
+        "variavel": "sigla_uf_RS",
+        "shap_medio_abs": 0.1388
+      },
+      {
+        "variavel": "sigla_uf_GO",
+        "shap_medio_abs": 0.126
+      }
+    ]
   },
   "limitacao": "indicadores contemporaneos; classificacao/nowcast municipal, nao previsao individual ou causal"
 }
