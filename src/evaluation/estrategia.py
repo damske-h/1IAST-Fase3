@@ -1,145 +1,131 @@
 """
-Tradução do modelo em instrumentos de decisão.
+Tradução do classificador em instrumentos de decisão.
 
 Enquanto `metricas.py` responde "o modelo é bom?", este módulo responde "o que
-se faz com ele?". São quatro instrumentos:
+se faz com ele?". Tudo aqui sai do **próprio modelo supervisionado** — não há
+um segundo modelo por trás de nenhuma das respostas.
 
-* **efeitos marginais** — o efeito de cada variável em *pontos percentuais* da
-  taxa esperada, que é a unidade em que um gestor pensa (o *odds ratio* é
-  correto, mas não é acionável numa reunião);
-* **taxa esperada e resíduo** — quanto o município alfabetiza, comparado ao que
-  a estrutura dele levaria a esperar;
-* **segmentação** — agrupamento de municípios por perfil, para desenhar
-  intervenção por tipo em vez de por território;
-* **estabilidade do ranking** — quanto uma lista de prioridade muda de um ciclo
-  para outro. É o instrumento que impede o uso indevido dos demais.
+| Instrumento | Pergunta de negócio que atende |
+|---|---|
+| `efeitos_marginais` | quais fatores mais impactam a alfabetização |
+| `ranking_de_risco` | quais municípios apresentam maior risco educacional |
+| `perfil_por_regiao` | quais regiões possuem padrões semelhantes |
+| `situacao_frente_a_meta` | quem pode não atingir a meta pactuada |
 """
 
 import numpy as np
 import pandas as pd
-from sklearn.cluster import KMeans
-from sklearn.impute import SimpleImputer
-from sklearn.metrics import silhouette_score
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
 
 SEMENTE = 42
 
 
 # =============================================================================
-# TAXA ESPERADA E RESÍDUO
+# PROBABILIDADE DE RISCO POR MUNICÍPIO
 # =============================================================================
 
-def tabela_municipal(modelo, base: pd.DataFrame) -> pd.DataFrame:
-    """Acrescenta `taxa_esperada` e `residuo` à base agregada.
+def ranking_de_risco(modelo, X: pd.DataFrame,
+                     colunas_extras=("sigla_uf", "regiao", "taxa_alfabetizacao")) -> pd.DataFrame:
+    """Probabilidade de risco por município, ordenada da maior para a menor.
 
-    Como as duas linhas da expansão binomial compartilham o mesmo vetor de
-    características, prever direto sobre a base agregada devolve exatamente a
-    taxa esperada daquele município — em percentual, para leitura direta.
-
-    O **resíduo** (observado − esperado) é a quantidade interessante para
-    política pública: mede quanto o município entrega *além* — ou *aquém* — do
-    que a estrutura dele explicaria.
+    É a resposta direta a "quais municípios apresentam maior risco educacional":
+    a saída nativa do classificador, sem nenhuma construção intermediária.
     """
-    tabela = base.copy()
-    tabela["taxa_esperada"] = modelo.predict_proba(base)[:, 1] * 100
-    tabela["residuo"] = tabela["taxa_alfabetizacao"] - tabela["taxa_esperada"]
-    return tabela
+    colunas = ["id_municipio", *[c for c in colunas_extras if c in X.columns]]
+    tabela = X[colunas].copy()
+    tabela["prob_risco"] = modelo.predict_proba(X)[:, 1]
+    return tabela.sort_values("prob_risco", ascending=False).reset_index(drop=True)
 
 
-def efeitos_marginais(modelo, base: pd.DataFrame, colunas) -> pd.DataFrame:
-    """Efeito de somar um desvio-padrão a cada variável, em pontos percentuais.
+# =============================================================================
+# EFEITOS MARGINAIS
+# =============================================================================
+
+def efeitos_marginais(modelo, X: pd.DataFrame, colunas) -> pd.DataFrame:
+    """Efeito de somar um desvio-padrão a cada variável, em pontos percentuais
+    de **probabilidade de risco**.
 
     Diferente do coeficiente, que vive em log-odds, este número responde à
-    pergunta do gestor: *"se eu melhorar isto, quanto sobe a taxa esperada?"*.
-    Continua sendo uma leitura **associativa**, não causal.
+    pergunta do gestor: *"se eu melhorar isto, quanto cai o risco?"*. Continua
+    sendo leitura **associativa**, não causal.
     """
-    referencia = modelo.predict_proba(base)[:, 1]
+    referencia = modelo.predict_proba(X)[:, 1]
 
     linhas = []
     for coluna in colunas:
-        alterada = base.copy()
+        alterada = X.copy()
         alterada[coluna] = alterada[coluna] + alterada[coluna].std()
         efeito = (modelo.predict_proba(alterada)[:, 1] - referencia).mean() * 100
-        linhas.append({"variavel": coluna, "efeito_pp": efeito})
+        linhas.append({"variavel": coluna, "efeito_pp_no_risco": efeito})
 
     return (pd.DataFrame(linhas)
             .set_index("variavel")
-            .sort_values("efeito_pp", key=np.abs, ascending=False))
+            .sort_values("efeito_pp_no_risco", key=np.abs, ascending=False))
 
 
 # =============================================================================
-# SEGMENTAÇÃO
+# PADRÕES REGIONAIS — SEM MODELO ADICIONAL
 # =============================================================================
 
-def preparar_segmentacao(base: pd.DataFrame, colunas):
-    """Imputa e padroniza o perfil municipal para o agrupamento."""
-    preparo = Pipeline([
-        ("imputacao", SimpleImputer(strategy="median")),
-        ("padronizacao", StandardScaler()),
-    ])
-    return preparo.fit_transform(base[colunas])
+def perfil_por_regiao(modelo, X: pd.DataFrame, valores_shap: pd.DataFrame,
+                      coluna_regiao: str = "regiao", n_fatores: int = 3) -> pd.DataFrame:
+    """Nível de risco e **motores do risco** em cada região.
 
+    Duas regiões "possuem padrões semelhantes" quando têm risco parecido *e* o
+    risco é empurrado pelos mesmos fatores. Ambas as leituras saem do modelo
+    supervisionado: a primeira da probabilidade prevista, a segunda da
+    contribuição média (SHAP) de cada variável naquela região.
 
-def avaliar_k(matriz, valores_de_k=range(2, 9), amostra: int = 3000) -> pd.DataFrame:
-    """Inércia e silhueta por número de grupos.
-
-    A silhueta é calculada numa amostra porque é O(n²). Valores baixos (abaixo
-    de ~0,2) indicam que **não há grupos naturais** — os perfis formam um
-    contínuo, e qualquer partição é uma conveniência descritiva, não uma
-    estrutura descoberta nos dados.
+    `valores_shap` deve vir com as mesmas linhas de `X` e uma coluna por
+    feature já transformada.
     """
-    indices = np.random.default_rng(SEMENTE).choice(
-        len(matriz), min(amostra, len(matriz)), replace=False)
+    contribuicoes = valores_shap.copy()
+    contribuicoes[coluna_regiao] = X[coluna_regiao].to_numpy()
+
+    # As dummies de UF ficam de fora: elas identificam o território em vez de
+    # explicá-lo, e tornariam a resposta circular.
+    fatores = [c for c in valores_shap.columns if not c.startswith("sigla_uf")]
+    media_por_regiao = contribuicoes.groupby(coluna_regiao)[fatores].mean()
+
+    probabilidade = pd.Series(modelo.predict_proba(X)[:, 1], index=X.index)
 
     linhas = []
-    for k in valores_de_k:
-        agrupador = KMeans(n_clusters=k, n_init=10, random_state=SEMENTE).fit(matriz)
+    for regiao, contribuicao in media_por_regiao.iterrows():
+        recorte = X[coluna_regiao] == regiao
+        principais = contribuicao.sort_values(ascending=False).head(n_fatores)
         linhas.append({
-            "k": k,
-            "inercia": agrupador.inertia_,
-            "silhueta": silhouette_score(matriz[indices], agrupador.labels_[indices]),
-            "menor_grupo": int(np.bincount(agrupador.labels_).min()),
+            "regiao": regiao,
+            "municipios": int(recorte.sum()),
+            "risco_medio_previsto": round(float(probabilidade[recorte].mean()), 3),
+            "motores_do_risco": " · ".join(principais.index),
         })
-    return pd.DataFrame(linhas)
 
-
-def segmentar(matriz, k: int) -> np.ndarray:
-    """Rótulo de segmento por município."""
-    return KMeans(n_clusters=k, n_init=10, random_state=SEMENTE).fit_predict(matriz)
+    return (pd.DataFrame(linhas)
+            .sort_values("risco_medio_previsto", ascending=False)
+            .reset_index(drop=True))
 
 
 # =============================================================================
-# ESTABILIDADE DE RANKING
+# SITUAÇÃO FRENTE À META
 # =============================================================================
 
-def estabilidade_ranking(tabela: pd.DataFrame, coluna: str,
-                         tamanhos=(300, 500, 1000),
-                         chave: str = "id_municipio",
-                         periodo: str = "ano") -> pd.DataFrame:
-    """Quanto uma lista dos "N piores" muda de um ciclo para o outro.
+def situacao_frente_a_meta(ranking: pd.DataFrame, metas: pd.DataFrame,
+                           limiar_risco: float = 0.5) -> pd.DataFrame:
+    """Cruza a probabilidade de risco com a meta pactuada de cada município.
 
-    Uma lista de prioridade só é utilizável se for razoavelmente estável: se os
-    N piores de um ciclo forem outros no ciclo seguinte, o critério está
-    medindo ruído, não o problema. A sobreposição entre os dois ciclos é a
-    forma mais direta de verificar isso antes de publicar a lista.
+    A meta **nunca entrou no modelo** — ela é derivada da taxa de 2023 do
+    próprio município, o que a torna vazamento como preditor. Aqui ela entra só
+    como régua de comparação, depois da predição.
     """
-    largo = tabela.pivot_table(index=chave, columns=periodo, values=coluna).dropna()
-    if largo.shape[1] != 2:
-        raise ValueError("são necessários exatamente dois ciclos para comparar")
+    juncao = ranking.merge(metas, on="id_municipio", how="left").dropna(subset=["meta_2025"])
+    juncao["atingiu_meta"] = juncao["taxa_alfabetizacao"] >= juncao["meta_2025"]
+    juncao["sinalizado_em_risco"] = juncao["prob_risco"] >= limiar_risco
 
-    primeiro, segundo = largo.columns
-    linhas = []
-    for n in tamanhos:
-        a = set(largo[primeiro].nsmallest(n).index)
-        b = set(largo[segundo].nsmallest(n).index)
-        linhas.append({
-            "tamanho_da_lista": n,
-            "municípios em comum": len(a & b),
-            "sobreposição_%": round(len(a & b) / n * 100, 1),
-        })
+    def classificar(linha):
+        if linha["atingiu_meta"]:
+            return "1. Meta já atingida"
+        if not linha["sinalizado_em_risco"]:
+            return "2. Abaixo da meta, sem sinal de risco estrutural"
+        return "3. Abaixo da meta e sinalizado em risco"
 
-    resultado = pd.DataFrame(linhas)
-    resultado.attrs["correlacao_entre_ciclos"] = round(
-        largo[primeiro].corr(largo[segundo]), 3)
-    return resultado
+    juncao["situacao"] = juncao.apply(classificar, axis=1)
+    return juncao

@@ -1,79 +1,78 @@
 """
-Construção do alvo supervisionado a partir de dados agregados.
+Definição do alvo — classificação binária no grão do município.
 
-O enunciado pede prever se **um aluno** será alfabetizado. A base disponível,
-porém, é agregada por município: cada linha traz a *taxa* de alfabetização,
-não o desfecho de cada criança. Não existem microdados de aluno publicados.
+**A premissa desta abordagem.** A alfabetização de um aluno é tratada como
+*dada pelo contexto do município em que ele estuda*. Em vez de tentar modelar a
+criança — que nenhuma base pública descreve individualmente —, modelamos o
+município, e a leitura para o aluno é direta: *"uma criança deste município
+está num contexto onde menos da metade dos colegas chega alfabetizada"*.
 
-A ponte entre os dois grãos é o **dado binário agrupado** (*grouped binary
-data*), que é exatamente o formato que a regressão logística binomial estima:
-cada linha município × ano vira **duas observações** com o mesmo vetor de
-características,
+Isso troca uma construção estatística elaborada (dado binário agrupado com
+pesos amostrais) por **uma linha, um município, um rótulo** — o formato que
+todo classificador do Scikit-learn espera, e o que os hands-on da disciplina
+usam do início ao fim.
 
-    y = 1  com peso  taxa / 100          (a fração de alunos alfabetizados)
-    y = 0  com peso  1 - taxa / 100      (a fração não alfabetizada)
+**O rótulo.** `em_risco = taxa_alfabetizacao < 50%` — o município onde **menos
+da metade das crianças** chega alfabetizada ao fim do 2º ano.
 
-treinadas com `sample_weight`. A verossimilhança resultante é idêntica à de
-uma logística ajustada sobre os alunos individuais daquele município, e a
-probabilidade prevista tem a leitura direta: *"probabilidade de um aluno
-daquele município estar alfabetizado"*.
+Três razões para este corte:
 
-**Limitação a declarar (falácia ecológica).** O modelo estima a probabilidade
-média do aluno *dado o município*. Ele não observa nenhuma característica
-individual da criança, e portanto não pode ser usado para prever o desfecho de
-um aluno específico — apenas o de um aluno típico daquele contexto municipal.
+1. **É absoluto.** Não deriva da taxa passada do próprio município (o que seria
+   circular) nem da média dos demais (o que faria metade do país estar sempre
+   "em risco" por construção, melhorasse o país ou não).
+2. **A classe positiva é a minoritária e a acionável** — 27,3% dos municípios.
+   É o caso em que *recall* e `class_weight` fazem diferença, e o erro que
+   custa caro é deixar um município em risco passar despercebido.
+3. **É comunicável.** "Menos da metade das crianças" é uma frase que um gestor
+   entende sem nota de rodapé.
 
-**Peso por município, não por aluno.** Cada município contribui com peso total
-1, independentemente de quantos alunos tenha. É a escolha coerente com o uso
-pretendido (priorizar municípios para política pública) e com o dado
-disponível — a base não traz o número de alunos avaliados. A alternativa
-(ponderar pelo porte) deslocaria as estimativas para os grandes municípios.
+**Recorte temporal.** Apenas o ciclo de **2024**: uma linha por município, sem
+repetição. Não há grupo a proteger na validação cruzada, o que dispensa o
+`GroupKFold` e permite usar `train_test_split` estratificado e
+`StratifiedKFold` diretamente.
 """
 
-import numpy as np
 import pandas as pd
 
+LIMIAR_RISCO = 50.0
+ANO_MODELAGEM = 2024
 COLUNA_TAXA = "taxa_alfabetizacao"
-COLUNA_GRUPO = "id_municipio"
 
 
-def expandir_binomial(base: pd.DataFrame,
-                      coluna_taxa: str = COLUNA_TAXA,
-                      coluna_grupo: str = COLUNA_GRUPO):
-    """Expande a base agregada em observações binárias ponderadas.
+def rotular_risco(base: pd.DataFrame,
+                  ano: int = ANO_MODELAGEM,
+                  limiar: float = LIMIAR_RISCO):
+    """Recorta o ciclo e devolve `(X, y)`.
 
-    Devolve `(X, y, peso, grupos)`, onde `X` repete cada linha duas vezes,
-    `y` alterna 1 e 0, `peso` traz a fração correspondente e `grupos` carrega
-    o `id_municipio` de cada observação — insumo do `GroupKFold`, que impede
-    o mesmo município de aparecer em treino e validação.
+    `X` é a base do ciclo, uma linha por município. `y` vale 1 quando o
+    município está **em risco** — menos de `limiar`% das crianças alfabetizadas.
     """
-    valida = base[base[coluna_taxa].notna()].reset_index(drop=True)
-    if len(valida) < len(base):
-        raise ValueError(
-            f"{len(base) - len(valida)} linha(s) sem taxa de alfabetização — "
-            "o alvo deve estar completo antes da expansão."
-        )
+    corte = base[base["ano"] == ano].reset_index(drop=True)
+    if corte.empty:
+        raise ValueError(f"nenhuma linha para o ciclo {ano}")
+    if corte["id_municipio"].duplicated().any():
+        raise ValueError("há municípios repetidos no ciclo — o grão deveria ser único")
 
-    X = valida.loc[valida.index.repeat(2)].reset_index(drop=True)
-    y = np.tile([1, 0], len(valida))
-
-    taxa = X[coluna_taxa].to_numpy() / 100.0
-    peso = np.where(y == 1, taxa, 1.0 - taxa)
-    grupos = X[coluna_grupo].to_numpy()
-
-    return X, y, peso, grupos
+    y = (corte[COLUNA_TAXA] < limiar).astype(int).to_numpy()
+    return corte, y
 
 
-def resumir_expansao(base: pd.DataFrame, y, peso) -> pd.DataFrame:
-    """Sumário de conferência da expansão, para exibir no notebook."""
+def resumir_rotulo(X: pd.DataFrame, y, limiar: float = LIMIAR_RISCO) -> pd.DataFrame:
+    """Sumário de conferência do rótulo, para exibir no notebook."""
+    em_risco = X.loc[y == 1, COLUNA_TAXA]
+    fora = X.loc[y == 0, COLUNA_TAXA]
+
     return pd.DataFrame([
-        {"verificação": "linhas na base agregada", "valor": len(base)},
-        {"verificação": "observações após a expansão", "valor": len(y)},
-        {"verificação": "soma dos pesos (= linhas da base)", "valor": round(float(peso.sum()), 2)},
-        {"verificação": "peso total em y=1 (alunos alfabetizados)",
-         "valor": round(float(peso[y == 1].sum()), 2)},
-        {"verificação": "taxa média implícita (%)",
-         "valor": round(float(peso[y == 1].sum() / peso.sum() * 100), 2)},
-        {"verificação": "observações com peso zero (taxa 0% ou 100%)",
-         "valor": int((peso == 0).sum())},
+        {"classe": f"em risco (taxa < {limiar:.0f}%)",
+         "municípios": int(y.sum()),
+         "% do total": round(float(y.mean()) * 100, 1),
+         "taxa média": round(float(em_risco.mean()), 1),
+         "taxa mínima": round(float(em_risco.min()), 1),
+         "taxa máxima": round(float(em_risco.max()), 1)},
+        {"classe": f"fora de risco (taxa >= {limiar:.0f}%)",
+         "municípios": int((y == 0).sum()),
+         "% do total": round(float((y == 0).mean()) * 100, 1),
+         "taxa média": round(float(fora.mean()), 1),
+         "taxa mínima": round(float(fora.min()), 1),
+         "taxa máxima": round(float(fora.max()), 1)},
     ])

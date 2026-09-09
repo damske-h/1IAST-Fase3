@@ -149,6 +149,13 @@ def construir_pipeline(C: float = 1.0, max_iter: int = 2000,
         # A penalidade L2 é o padrão do LogisticRegression e é o que queremos:
         # estabiliza os coeficientes sob a colinearidade residual entre blocos.
         # (O argumento `penalty` foi depreciado no scikit-learn 1.8; omiti-lo mantém L2.)
+        #
+        # **Sem `class_weight`**, de propósito. Medimos: `class_weight="balanced"`
+        # não altera o ROC-AUC (0,879 nos dois) — ele apenas desloca o limiar
+        # implícito, ao custo de descalibrar a probabilidade (desvio médio de
+        # 0,111 contra 0,045). Como o desbalanceamento se resolve igualmente bem
+        # **escolhendo o limiar** (ver `evaluation.limiar_por_recall`), preferimos
+        # a via que preserva a leitura da probabilidade.
         estimador = LogisticRegression(
             C=C,
             solver="lbfgs",
@@ -164,33 +171,38 @@ def construir_pipeline(C: float = 1.0, max_iter: int = 2000,
 # CANDIDATOS DA COMPARAÇÃO FORMAL DE ALGORITMOS
 # =============================================================================
 #
-# Todos passam pelo mesmo pré-processamento e pela mesma validação ponderada.
-# Só o estimador muda — é isso que torna a comparação justa.
+# Todos passam pelo mesmo pré-processamento e pela mesma validação. Só o
+# estimador muda — é isso que torna a comparação justa.
 #
-# Ficam de fora, por impossibilidade técnica e não por preferência:
-#   * SVM  — o `SVC` não produz probabilidade calibrada nativamente (só via
-#     Platt scaling, que é outro modelo por cima), e nossas métricas centrais
-#     (Brier, calibração) exigem probabilidade. Além disso é O(n²) em 21.792
-#     observações.
-#   * Modelos que não aceitam `sample_weight` — o alvo binomial ponderado
-#     depende inteiramente do peso; sem ele o problema deixa de existir.
+# Com o alvo no grão do município, **todos os algoritmos das aulas cabem**:
+# não há mais peso amostral para rotear, e 5.448 linhas tornam o SVM viável.
+#
+# Nenhum candidato usa `class_weight`: nem todos o aceitam (KNN e Naive Bayes não),
+# e a comparação é feita em **métricas independentes de limiar** (ROC-AUC e
+# PR-AUC). O desbalanceamento é tratado depois, na escolha do limiar do modelo
+# vencedor.
 
 def modelos_candidatos(random_state: int = 42) -> dict:
-    """Catálogo dos algoritmos comparados no notebook 03, §10."""
+    """Catálogo dos algoritmos comparados no notebook de modelagem."""
     from sklearn.dummy import DummyClassifier
     from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
     from sklearn.naive_bayes import GaussianNB
+    from sklearn.neighbors import KNeighborsClassifier
+    from sklearn.svm import SVC
     from sklearn.tree import DecisionTreeClassifier
 
     return {
-        "Baseline (taxa média)": DummyClassifier(strategy="prior"),
+        "Baseline (classe majoritária)": DummyClassifier(strategy="most_frequent"),
         "Regressão Logística": LogisticRegression(
             C=1.0, solver="lbfgs", max_iter=2000, random_state=random_state),
+        "KNN": KNeighborsClassifier(n_neighbors=25, weights="distance"),
         "Naive Bayes": GaussianNB(),
         "Árvore de Decisão": DecisionTreeClassifier(
-            max_depth=6, min_samples_leaf=50, random_state=random_state),
+            max_depth=6, min_samples_leaf=30, random_state=random_state),
+        "SVM (RBF)": SVC(
+            kernel="rbf", C=1.0, probability=True, random_state=random_state),
         "Random Forest": RandomForestClassifier(
-            n_estimators=200, max_depth=12, min_samples_leaf=20,
+            n_estimators=300, max_depth=12, min_samples_leaf=10,
             n_jobs=-1, random_state=random_state),
         "Gradient Boosting": GradientBoostingClassifier(
             n_estimators=150, max_depth=3, learning_rate=0.1,
